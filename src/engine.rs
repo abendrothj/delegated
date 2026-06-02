@@ -1,7 +1,6 @@
-use crate::models::{AuditEvent, Decision, RequestEnvelope, Violation};
-use crate::stages::{
-    authorize_action, normalize_request, validate_token_binding, validate_token_lifetime,
-};
+use crate::models::{AuditEvent, Decision, PolicyCheck, RequestEnvelope, Violation};
+use crate::policy::{evaluate_policy, simulate_policy};
+use crate::stages::{normalize_request, validate_token_binding, validate_token_lifetime};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use std::fs::OpenOptions;
@@ -12,11 +11,11 @@ pub fn evaluate_request(raw_request: &Value, now: DateTime<Utc>) -> (Decision, A
     let result = normalize_request(raw_request)
         .and_then(|envelope| validate_token_lifetime(envelope, now))
         .and_then(validate_token_binding)
-        .and_then(authorize_action);
+        .and_then(evaluate_policy);
 
     match result {
         Ok(envelope) => {
-            let decision = Decision::allow("request authorized");
+            let decision = Decision::allow("evaluate_policy", "request authorized");
             let event = from_envelope(envelope, &decision, now);
             (decision, event)
         }
@@ -26,6 +25,11 @@ pub fn evaluate_request(raw_request: &Value, now: DateTime<Utc>) -> (Decision, A
             (decision, event)
         }
     }
+}
+
+pub fn simulate_request_policy(raw_request: &Value) -> Result<Vec<PolicyCheck>, Violation> {
+    let envelope = normalize_request(raw_request)?;
+    Ok(simulate_policy(&envelope))
 }
 
 pub fn append_audit_event(path: impl AsRef<Path>, event: &AuditEvent) -> io::Result<()> {
@@ -131,7 +135,7 @@ mod tests {
     fn allows_valid_request() {
         let (decision, event) = evaluate_request(&valid_request(), now());
         assert!(decision.allowed);
-        assert_eq!(decision.stage, "authorize_action");
+        assert_eq!(decision.stage, "evaluate_policy");
         assert_eq!(event.allowed, true);
         assert_eq!(event.token_id.as_deref(), Some("dlg_01J0EXAMPLE"));
     }
@@ -143,7 +147,7 @@ mod tests {
 
         let (decision, event) = evaluate_request(&request, now());
         assert!(!decision.allowed);
-        assert_eq!(decision.stage, "authorize_action");
+        assert_eq!(decision.stage, "evaluate_policy");
         assert_eq!(event.allowed, false);
     }
 
@@ -184,6 +188,50 @@ mod tests {
         let (decision, _event) = evaluate_request(&request, now());
         assert!(!decision.allowed);
         assert_eq!(decision.stage, "normalize_request");
+    }
+
+    #[test]
+    fn denies_when_email_domain_not_allowed() {
+        let mut request = valid_request();
+        request["audience"] = Value::String("tool:gmail".to_string());
+        request["action"] = Value::String("gmail.send_message".to_string());
+        request["runtime_context"] = json!({
+            "target_email": "receiver@outside.org"
+        });
+        request["delegation_token"]["resource_constraints"] = json!({
+            "email_domain_allowlist": ["example.com"]
+        });
+
+        let (decision, _event) = evaluate_request(&request, now());
+        assert!(!decision.allowed);
+        assert_eq!(decision.stage, "evaluate_policy");
+        assert_eq!(
+            decision.reason,
+            "target email domain not allowed by token resource constraints"
+        );
+    }
+
+    #[test]
+    fn simulates_policy_checks() {
+        let mut request = valid_request();
+        request["runtime_context"] = json!({
+            "requested_spend": 10,
+            "spend_currency": "USD",
+            "delegation_depth": 1
+        });
+        request["delegation_token"]["max_spend"] = json!({
+            "amount": 5,
+            "currency": "USD"
+        });
+        request["delegation_token"]["max_delegation_depth"] = json!(0);
+
+        let checks = simulate_request_policy(&request).expect("policy simulation should succeed");
+        assert!(checks.iter().any(|check| !check.passed));
+        assert!(
+            checks
+                .iter()
+                .any(|check| check.name == "max_spend" && !check.passed)
+        );
     }
 
     #[test]

@@ -12,6 +12,7 @@ pub fn validate_request_contract(envelope: &RequestEnvelope) -> Result<(), Viola
     validate_non_empty("request.delegator_id", &envelope.delegator_id)?;
     validate_non_empty("request.audience", &envelope.audience)?;
     validate_non_empty("request.action", &envelope.action)?;
+    validate_runtime_context(envelope)?;
 
     if let Some(request_id) = envelope.request_id.as_ref() {
         validate_non_empty("request.request_id", request_id)?;
@@ -57,6 +58,25 @@ fn validate_delegation_token(token: &DelegationToken) -> Result<(), Violation> {
             "normalize_request",
             "delegation_token.issued_at must be before delegation_token.expires_at",
         ));
+    }
+
+    if let Some(constraints) = token.resource_constraints.as_ref() {
+        if let Some(calendar_ids) = constraints.calendar_ids.as_ref() {
+            validate_non_empty_vec(
+                "delegation_token.resource_constraints.calendar_ids",
+                calendar_ids,
+            )?;
+        }
+        if let Some(allowlist) = constraints.email_domain_allowlist.as_ref() {
+            validate_non_empty_vec(
+                "delegation_token.resource_constraints.email_domain_allowlist",
+                allowlist,
+            )?;
+        }
+    }
+
+    if let Some(max_spend) = token.max_spend.as_ref() {
+        validate_non_empty("delegation_token.max_spend.currency", &max_spend.currency)?;
     }
 
     Ok(())
@@ -177,6 +197,30 @@ fn validate_non_empty_vec(field_name: &str, values: &[String]) -> Result<(), Vio
 
     for value in values {
         validate_non_empty(field_name, value)?;
+    }
+    Ok(())
+}
+
+fn validate_runtime_context(envelope: &RequestEnvelope) -> Result<(), Violation> {
+    if let Some(requested_spend) = envelope.runtime_context.requested_spend {
+        if requested_spend < 0 {
+            return Err(Violation::new(
+                "normalize_request",
+                "request.runtime_context.requested_spend must be zero or positive",
+            ));
+        }
+    }
+    if let Some(currency) = envelope.runtime_context.spend_currency.as_ref() {
+        validate_non_empty("request.runtime_context.spend_currency", currency)?;
+    }
+    if let Some(target_email) = envelope.runtime_context.target_email.as_ref() {
+        validate_non_empty("request.runtime_context.target_email", target_email)?;
+    }
+    if let Some(target_calendar_id) = envelope.runtime_context.target_calendar_id.as_ref() {
+        validate_non_empty(
+            "request.runtime_context.target_calendar_id",
+            target_calendar_id,
+        )?;
     }
     Ok(())
 }

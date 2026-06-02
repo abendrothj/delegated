@@ -37,7 +37,7 @@ pub struct DelegationToken {
     pub owner_id: String,
     pub audience: Vec<String>,
     pub allowed_actions: Vec<String>,
-    pub resource_constraints: Option<serde_json::Value>,
+    pub resource_constraints: Option<ResourceConstraints>,
     pub max_spend: Option<MaxSpend>,
     pub max_delegation_depth: Option<u16>,
     pub approval_policy: Option<serde_json::Value>,
@@ -58,9 +58,26 @@ pub struct RequestEnvelope {
     pub audience: String,
     pub action: String,
     pub resource: Option<String>,
+    #[serde(default)]
+    pub runtime_context: RuntimeContext,
     pub identity_document: Option<AgentIdentityDocument>,
     #[serde(rename = "delegation_token")]
     pub token: DelegationToken,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResourceConstraints {
+    pub calendar_ids: Option<Vec<String>>,
+    pub email_domain_allowlist: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct RuntimeContext {
+    pub requested_spend: Option<i64>,
+    pub spend_currency: Option<String>,
+    pub delegation_depth: Option<u16>,
+    pub target_email: Option<String>,
+    pub target_calendar_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,10 +137,10 @@ pub struct Decision {
 }
 
 impl Decision {
-    pub fn allow(reason: impl Into<String>) -> Self {
+    pub fn allow(stage: impl Into<String>, reason: impl Into<String>) -> Self {
         Self {
             allowed: true,
-            stage: "authorize_action".to_string(),
+            stage: stage.into(),
             reason: reason.into(),
         }
     }
@@ -149,4 +166,11 @@ pub struct AuditEvent {
     pub audience: Option<String>,
     pub action: Option<String>,
     pub token_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PolicyCheck {
+    pub name: String,
+    pub passed: bool,
+    pub reason: String,
 }

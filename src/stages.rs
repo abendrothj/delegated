@@ -60,14 +60,3 @@ pub fn validate_token_binding(envelope: RequestEnvelope) -> Result<RequestEnvelo
 
     Ok(envelope)
 }
-
-pub fn authorize_action(envelope: RequestEnvelope) -> Result<RequestEnvelope, Violation> {
-    if !envelope.token.allowed_actions.contains(&envelope.action) {
-        return Err(Violation::new(
-            "authorize_action",
-            "requested action not in token allowed_actions",
-        ));
-    }
-
-    Ok(envelope)
-}

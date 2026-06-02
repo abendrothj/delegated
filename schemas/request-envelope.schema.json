@@ -21,6 +21,17 @@
     "audience": { "type": "string", "minLength": 1 },
     "action": { "type": "string", "minLength": 1 },
     "resource": { "type": "string", "minLength": 1 },
+    "runtime_context": {
+      "type": "object",
+      "properties": {
+        "requested_spend": { "type": "integer" },
+        "spend_currency": { "type": "string", "minLength": 1 },
+        "delegation_depth": { "type": "integer", "minimum": 0 },
+        "target_email": { "type": "string", "minLength": 1 },
+        "target_calendar_id": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
     "identity_document": {
       "$ref": "agent-identity-document.schema.json"
     },

@@ -37,7 +37,20 @@
       "minItems": 1,
       "items": { "type": "string", "minLength": 1 }
     },
-    "resource_constraints": { "type": "object" },
+    "resource_constraints": {
+      "type": "object",
+      "properties": {
+        "calendar_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "email_domain_allowlist": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": true
+    },
     "max_spend": {
       "type": "object",
       "required": ["amount", "currency"],
