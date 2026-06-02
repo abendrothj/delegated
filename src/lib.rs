@@ -10,8 +10,14 @@ pub mod revocation;
 pub mod stages;
 pub mod wire;
 
+pub use adapters::a2a::{
+    A2aProtocolRequest, A2aProtocolResponse, handle_a2a_request, handle_a2a_request_with_state,
+};
 pub use adapters::http::{
     HttpAdapterResponse, handle_http_json_request, handle_http_json_request_with_state,
+};
+pub use adapters::mcp::{
+    McpJsonRpcResponse, handle_mcp_jsonrpc_request, handle_mcp_jsonrpc_request_with_state,
 };
 pub use audit::{AuditSink, JsonlFileAuditSink};
 pub use crypto::{
