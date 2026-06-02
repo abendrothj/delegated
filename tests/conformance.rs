@@ -1,9 +1,9 @@
+use agentauth::models::{
+    AgentEndpoint, AgentIdentityDocument, DelegationToken, PublicKeyRecord, RuntimeContext,
+};
 use agentauth::{
     InMemoryTrustState, JsonlFileAuditSink, RequestEnvelope, TOKEN_SIGNATURE_ALG_ED25519,
     handle_http_json_request_with_state, sign_delegation_token, sign_identity_document,
-};
-use agentauth::models::{
-    AgentEndpoint, AgentIdentityDocument, DelegationToken, PublicKeyRecord, RuntimeContext,
 };
 use base64ct::{Base64UrlUnpadded, Encoding};
 use chrono::{TimeZone, Utc};
