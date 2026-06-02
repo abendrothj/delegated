@@ -1,4 +1,5 @@
 use crate::contracts::validate_request_contract;
+use crate::crypto::{verify_delegation_token_signature, verify_identity_document_signature};
 use crate::models::{RequestEnvelope, Violation};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
@@ -58,5 +59,37 @@ pub fn validate_token_binding(envelope: RequestEnvelope) -> Result<RequestEnvelo
         ));
     }
 
+    Ok(envelope)
+}
+
+pub fn verify_signatures(envelope: RequestEnvelope) -> Result<RequestEnvelope, Violation> {
+    let identity_document = envelope.identity_document.as_ref().ok_or_else(|| {
+        Violation::new(
+            "verify_signatures",
+            "identity_document is required for offline signature verification",
+        )
+    })?;
+
+    if identity_document.issuer != envelope.token.issuer {
+        return Err(Violation::new(
+            "verify_signatures",
+            "delegation token issuer does not match identity document issuer",
+        ));
+    }
+    if identity_document.agent_id != envelope.token.agent_id {
+        return Err(Violation::new(
+            "verify_signatures",
+            "delegation token agent_id does not match identity document agent_id",
+        ));
+    }
+    if identity_document.owner_id != envelope.token.owner_id {
+        return Err(Violation::new(
+            "verify_signatures",
+            "delegation token owner_id does not match identity document owner_id",
+        ));
+    }
+
+    verify_identity_document_signature(identity_document)?;
+    verify_delegation_token_signature(&envelope.token, identity_document)?;
     Ok(envelope)
 }

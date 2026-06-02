@@ -66,8 +66,16 @@ pub fn handle_http_json_request(
 mod tests {
     use super::*;
     use crate::audit::{AuditSink, JsonlFileAuditSink};
-    use crate::models::AuditEvent;
+    use crate::crypto::{
+        TOKEN_SIGNATURE_ALG_ED25519, sign_delegation_token, sign_identity_document,
+    };
+    use crate::models::{
+        AgentEndpoint, AgentIdentityDocument, AuditEvent, DelegationToken, PublicKeyRecord,
+        RequestEnvelope, RuntimeContext,
+    };
+    use base64ct::{Base64UrlUnpadded, Encoding};
     use chrono::TimeZone;
+    use ed25519_dalek::SigningKey;
     use std::io;
 
     fn now() -> DateTime<Utc> {
@@ -76,39 +84,106 @@ mod tests {
             .expect("valid test timestamp")
     }
 
+    fn signing_key() -> SigningKey {
+        SigningKey::from_bytes(&[9u8; 32])
+    }
+
     fn valid_request_body() -> String {
-        json!({
-            "spec_version": "0.1",
-            "kind": "TrustRequestEnvelope",
-            "request_id": "req_http_123",
-            "agent_id": "agent:example:scheduler:v1",
-            "delegator_id": "user:jake-abendroth",
-            "audience": "tool:google-calendar",
-            "action": "calendar.create_event",
-            "runtime_context": {
-                "cognitive_judge_scores_bps": [9300, 9100],
-                "cognitive_challenge_pass_bps": 9200,
-                "reputation_score_bps": 8200
+        let key = signing_key();
+        let mut identity_document = AgentIdentityDocument {
+            spec_version: "0.1".to_string(),
+            kind: "AgentIdentityDocument".to_string(),
+            agent_id: "agent:example:scheduler:v1".to_string(),
+            display_name: Some("example Scheduler Agent".to_string()),
+            owner_id: "org:example".to_string(),
+            issuer: "https://trust.example.ai".to_string(),
+            identity_type: "spiffe".to_string(),
+            subject: "spiffe://example.ai/agents/scheduler".to_string(),
+            public_keys: vec![PublicKeyRecord {
+                kid: "key-2026-01".to_string(),
+                kty: "OKP".to_string(),
+                crv: Some(TOKEN_SIGNATURE_ALG_ED25519.to_string()),
+                x: Some(Base64UrlUnpadded::encode_string(
+                    &key.verifying_key().to_bytes(),
+                )),
+            }],
+            supported_protocols: vec!["http".to_string()],
+            supported_auth_methods: vec!["delegation_token".to_string()],
+            capabilities: None,
+            endpoints: vec![AgentEndpoint {
+                protocol: "http".to_string(),
+                url: "https://agents.example.ai/scheduler".to_string(),
+            }],
+            attestation: None,
+            created_at: Utc
+                .with_ymd_and_hms(2026, 6, 1, 20, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            expires_at: Utc
+                .with_ymd_and_hms(2026, 6, 8, 20, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            signature: String::new(),
+        };
+        identity_document.signature =
+            sign_identity_document(&identity_document, &key).expect("identity signing should work");
+
+        let mut token = DelegationToken {
+            spec_version: "0.1".to_string(),
+            kind: "DelegationToken".to_string(),
+            token_id: "dlg_http_01".to_string(),
+            issuer: "https://trust.example.ai".to_string(),
+            agent_id: "agent:example:scheduler:v1".to_string(),
+            delegator_id: "user:jake-abendroth".to_string(),
+            owner_id: "org:example".to_string(),
+            audience: vec!["tool:google-calendar".to_string()],
+            allowed_actions: vec!["calendar.create_event".to_string()],
+            resource_constraints: None,
+            max_spend: None,
+            max_delegation_depth: None,
+            approval_policy: None,
+            issued_at: Utc
+                .with_ymd_and_hms(2026, 6, 1, 20, 10, 0)
+                .single()
+                .expect("valid timestamp"),
+            expires_at: Utc
+                .with_ymd_and_hms(2026, 6, 1, 20, 40, 0)
+                .single()
+                .expect("valid timestamp"),
+            intent: None,
+            nonce: "random-nonce".to_string(),
+            key_id: "key-2026-01".to_string(),
+            signature_alg: TOKEN_SIGNATURE_ALG_ED25519.to_string(),
+            signature: String::new(),
+        };
+        token.signature = sign_delegation_token(&token, &key).expect("token signing should work");
+
+        let request = RequestEnvelope {
+            spec_version: "0.1".to_string(),
+            kind: "TrustRequestEnvelope".to_string(),
+            request_id: Some("req_http_123".to_string()),
+            agent_id: "agent:example:scheduler:v1".to_string(),
+            delegator_id: "user:jake-abendroth".to_string(),
+            audience: "tool:google-calendar".to_string(),
+            action: "calendar.create_event".to_string(),
+            resource: None,
+            runtime_context: RuntimeContext {
+                requested_spend: None,
+                spend_currency: None,
+                delegation_depth: None,
+                target_email: None,
+                target_calendar_id: None,
+                cognitive_judge_scores_bps: Some(vec![9300, 9100]),
+                cognitive_challenge_pass_bps: Some(9200),
+                reputation_score_bps: Some(8200),
+                risk_challenge_passed: None,
+                extra_approval_granted: None,
             },
-            "delegation_token": {
-                "spec_version": "0.1",
-                "kind": "DelegationToken",
-                "token_id": "dlg_http_01",
-                "issuer": "https://trust.example.ai",
-                "agent_id": "agent:example:scheduler:v1",
-                "delegator_id": "user:jake-abendroth",
-                "owner_id": "org:example",
-                "audience": ["tool:google-calendar"],
-                "allowed_actions": ["calendar.create_event"],
-                "issued_at": "2026-06-01T20:10:00Z",
-                "expires_at": "2026-06-01T20:40:00Z",
-                "nonce": "random-nonce",
-                "key_id": "key-2026-01",
-                "signature_alg": "Ed25519",
-                "signature": "base64url-signature"
-            }
-        })
-        .to_string()
+            identity_document: Some(identity_document),
+            token,
+        };
+
+        serde_json::to_string(&request).expect("request serialization should work")
     }
 
     #[test]

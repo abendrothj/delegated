@@ -1,7 +1,9 @@
 use crate::audit::{AuditSink, JsonlFileAuditSink, write_audit_event};
 use crate::models::{AuditEvent, Decision, PolicyCheck, RequestEnvelope, Violation};
 use crate::policy::{evaluate_policy, simulate_policy};
-use crate::stages::{normalize_request, validate_token_binding, validate_token_lifetime};
+use crate::stages::{
+    normalize_request, validate_token_binding, validate_token_lifetime, verify_signatures,
+};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use std::io;
@@ -9,6 +11,7 @@ use std::path::Path;
 
 pub fn evaluate_request(raw_request: &Value, now: DateTime<Utc>) -> (Decision, AuditEvent) {
     let result = normalize_request(raw_request)
+        .and_then(verify_signatures)
         .and_then(|envelope| validate_token_lifetime(envelope, now))
         .and_then(validate_token_binding)
         .and_then(evaluate_policy);
@@ -99,7 +102,16 @@ fn extract_string(root: &Value, path: &[&str]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::{
+        TOKEN_SIGNATURE_ALG_ED25519, sign_delegation_token, sign_identity_document,
+    };
+    use crate::models::{
+        AgentEndpoint, AgentIdentityDocument, DelegationToken, PublicKeyRecord, RequestEnvelope,
+        RuntimeContext,
+    };
+    use base64ct::{Base64UrlUnpadded, Encoding};
     use chrono::TimeZone;
+    use ed25519_dalek::SigningKey;
     use serde_json::json;
 
     fn now() -> DateTime<Utc> {
@@ -108,43 +120,120 @@ mod tests {
             .expect("valid test timestamp")
     }
 
+    fn signing_key() -> SigningKey {
+        SigningKey::from_bytes(&[7u8; 32])
+    }
+
     fn valid_request() -> Value {
-        json!({
-            "spec_version": "0.1",
-            "kind": "TrustRequestEnvelope",
-            "request_id": "req_123",
-            "agent_id": "agent:example:scheduler:v1",
-            "delegator_id": "user:jake-abendroth",
-            "audience": "tool:google-calendar",
-            "action": "calendar.create_event",
-            "runtime_context": {
-                "cognitive_judge_scores_bps": [9300, 9100],
-                "cognitive_challenge_pass_bps": 9200,
-                "reputation_score_bps": 8200
+        let key = signing_key();
+        let mut identity_document = AgentIdentityDocument {
+            spec_version: "0.1".to_string(),
+            kind: "AgentIdentityDocument".to_string(),
+            agent_id: "agent:example:scheduler:v1".to_string(),
+            display_name: Some("example Scheduler Agent".to_string()),
+            owner_id: "org:example".to_string(),
+            issuer: "https://trust.example.ai".to_string(),
+            identity_type: "spiffe".to_string(),
+            subject: "spiffe://example.ai/agents/scheduler".to_string(),
+            public_keys: vec![PublicKeyRecord {
+                kid: "key-2026-01".to_string(),
+                kty: "OKP".to_string(),
+                crv: Some(TOKEN_SIGNATURE_ALG_ED25519.to_string()),
+                x: Some(Base64UrlUnpadded::encode_string(
+                    &key.verifying_key().to_bytes(),
+                )),
+            }],
+            supported_protocols: vec!["http".to_string()],
+            supported_auth_methods: vec!["delegation_token".to_string()],
+            capabilities: None,
+            endpoints: vec![AgentEndpoint {
+                protocol: "http".to_string(),
+                url: "https://agents.example.ai/scheduler".to_string(),
+            }],
+            attestation: None,
+            created_at: Utc
+                .with_ymd_and_hms(2026, 6, 1, 20, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            expires_at: Utc
+                .with_ymd_and_hms(2026, 6, 8, 20, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            signature: String::new(),
+        };
+        identity_document.signature =
+            sign_identity_document(&identity_document, &key).expect("identity signing should work");
+
+        let mut token = DelegationToken {
+            spec_version: "0.1".to_string(),
+            kind: "DelegationToken".to_string(),
+            token_id: "dlg_01J0EXAMPLE".to_string(),
+            issuer: "https://trust.example.ai".to_string(),
+            agent_id: "agent:example:scheduler:v1".to_string(),
+            delegator_id: "user:jake-abendroth".to_string(),
+            owner_id: "org:example".to_string(),
+            audience: vec!["tool:google-calendar".to_string(), "tool:gmail".to_string()],
+            allowed_actions: vec![
+                "calendar.create_event".to_string(),
+                "calendar.read_availability".to_string(),
+                "gmail.send_message".to_string(),
+            ],
+            resource_constraints: None,
+            max_spend: None,
+            max_delegation_depth: None,
+            approval_policy: None,
+            issued_at: Utc
+                .with_ymd_and_hms(2026, 6, 1, 20, 10, 0)
+                .single()
+                .expect("valid timestamp"),
+            expires_at: Utc
+                .with_ymd_and_hms(2026, 6, 1, 20, 40, 0)
+                .single()
+                .expect("valid timestamp"),
+            intent: Some("schedule_demo_and_send_confirmation".to_string()),
+            nonce: "random-nonce".to_string(),
+            key_id: "key-2026-01".to_string(),
+            signature_alg: TOKEN_SIGNATURE_ALG_ED25519.to_string(),
+            signature: String::new(),
+        };
+        token.signature =
+            sign_delegation_token(&token, &key).expect("delegation signing should work");
+
+        let envelope = RequestEnvelope {
+            spec_version: "0.1".to_string(),
+            kind: "TrustRequestEnvelope".to_string(),
+            request_id: Some("req_123".to_string()),
+            agent_id: "agent:example:scheduler:v1".to_string(),
+            delegator_id: "user:jake-abendroth".to_string(),
+            audience: "tool:google-calendar".to_string(),
+            action: "calendar.create_event".to_string(),
+            resource: None,
+            runtime_context: RuntimeContext {
+                requested_spend: None,
+                spend_currency: None,
+                delegation_depth: None,
+                target_email: None,
+                target_calendar_id: None,
+                cognitive_judge_scores_bps: Some(vec![9300, 9100]),
+                cognitive_challenge_pass_bps: Some(9200),
+                reputation_score_bps: Some(8200),
+                risk_challenge_passed: None,
+                extra_approval_granted: None,
             },
-            "delegation_token": {
-                "spec_version": "0.1",
-                "kind": "DelegationToken",
-                "token_id": "dlg_01J0EXAMPLE",
-                "issuer": "https://trust.example.ai",
-                "agent_id": "agent:example:scheduler:v1",
-                "delegator_id": "user:jake-abendroth",
-                "owner_id": "org:example",
-                "audience": ["tool:google-calendar", "tool:gmail"],
-                "allowed_actions": [
-                    "calendar.create_event",
-                    "calendar.read_availability",
-                    "gmail.send_message"
-                ],
-                "issued_at": "2026-06-01T20:10:00Z",
-                "expires_at": "2026-06-01T20:40:00Z",
-                "intent": "schedule_demo_and_send_confirmation",
-                "nonce": "random-nonce",
-                "key_id": "key-2026-01",
-                "signature_alg": "Ed25519",
-                "signature": "base64url-signature"
-            }
-        })
+            identity_document: Some(identity_document),
+            token,
+        };
+
+        serde_json::to_value(envelope).expect("request serialization should work")
+    }
+
+    fn resign_token(request: &mut Value) {
+        let key = signing_key();
+        let mut token: DelegationToken =
+            serde_json::from_value(request["delegation_token"].clone())
+                .expect("token should parse");
+        token.signature = sign_delegation_token(&token, &key).expect("token resign should work");
+        request["delegation_token"] = serde_json::to_value(token).expect("token serialization");
     }
 
     #[test]
@@ -172,6 +261,7 @@ mod tests {
         let mut request = valid_request();
         request["delegation_token"]["expires_at"] =
             Value::String("2026-06-01T20:15:00Z".to_string());
+        resign_token(&mut request);
 
         let (decision, _event) = evaluate_request(&request, now());
         assert!(!decision.allowed);
@@ -181,8 +271,7 @@ mod tests {
     #[test]
     fn denies_when_binding_mismatch() {
         let mut request = valid_request();
-        request["delegation_token"]["agent_id"] =
-            Value::String("agent:example:other:v1".to_string());
+        request["delegator_id"] = Value::String("user:someone-else".to_string());
 
         let (decision, _event) = evaluate_request(&request, now());
         assert!(!decision.allowed);
@@ -219,6 +308,7 @@ mod tests {
         request["delegation_token"]["resource_constraints"] = json!({
             "email_domain_allowlist": ["example.com"]
         });
+        resign_token(&mut request);
 
         let (decision, _event) = evaluate_request(&request, now());
         assert!(!decision.allowed);
@@ -244,6 +334,7 @@ mod tests {
             "currency": "USD"
         });
         request["delegation_token"]["max_delegation_depth"] = json!(0);
+        resign_token(&mut request);
 
         let checks = simulate_request_policy(&request).expect("policy simulation should succeed");
         assert!(checks.iter().any(|check| !check.passed));
@@ -283,6 +374,24 @@ mod tests {
             decision.reason,
             "low reputation requires additional challenge pass or explicit approval"
         );
+    }
+
+    #[test]
+    fn denies_when_signature_verification_fails() {
+        let mut request = valid_request();
+        request["delegation_token"]["signature"] = json!("not-a-valid-signature");
+        let (decision, _event) = evaluate_request(&request, now());
+        assert!(!decision.allowed);
+        assert_eq!(decision.stage, "verify_signatures");
+    }
+
+    #[test]
+    fn denies_when_identity_document_missing() {
+        let mut request = valid_request();
+        request["identity_document"] = Value::Null;
+        let (decision, _event) = evaluate_request(&request, now());
+        assert!(!decision.allowed);
+        assert_eq!(decision.stage, "verify_signatures");
     }
 
     #[test]
