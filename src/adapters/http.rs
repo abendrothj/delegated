@@ -85,6 +85,11 @@ mod tests {
             "delegator_id": "user:jake-abendroth",
             "audience": "tool:google-calendar",
             "action": "calendar.create_event",
+            "runtime_context": {
+                "cognitive_judge_scores_bps": [9300, 9100],
+                "cognitive_challenge_pass_bps": 9200,
+                "reputation_score_bps": 8200
+            },
             "delegation_token": {
                 "spec_version": "0.1",
                 "kind": "DelegationToken",

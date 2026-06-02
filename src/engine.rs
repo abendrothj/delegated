@@ -117,6 +117,11 @@ mod tests {
             "delegator_id": "user:jake-abendroth",
             "audience": "tool:google-calendar",
             "action": "calendar.create_event",
+            "runtime_context": {
+                "cognitive_judge_scores_bps": [9300, 9100],
+                "cognitive_challenge_pass_bps": 9200,
+                "reputation_score_bps": 8200
+            },
             "delegation_token": {
                 "spec_version": "0.1",
                 "kind": "DelegationToken",
@@ -205,7 +210,9 @@ mod tests {
         request["audience"] = Value::String("tool:gmail".to_string());
         request["action"] = Value::String("gmail.send_message".to_string());
         request["runtime_context"] = json!({
-            "target_email": "receiver@outside.org"
+            "target_email": "receiver@outside.org",
+            "cognitive_judge_scores_bps": [9300, 9100],
+            "cognitive_challenge_pass_bps": 9200
         });
         request["delegation_token"]["resource_constraints"] = json!({
             "email_domain_allowlist": ["example.com"]
@@ -226,7 +233,9 @@ mod tests {
         request["runtime_context"] = json!({
             "requested_spend": 10,
             "spend_currency": "USD",
-            "delegation_depth": 1
+            "delegation_depth": 1,
+            "cognitive_judge_scores_bps": [9300, 9100],
+            "cognitive_challenge_pass_bps": 9200
         });
         request["delegation_token"]["max_spend"] = json!({
             "amount": 5,
@@ -240,6 +249,37 @@ mod tests {
             checks
                 .iter()
                 .any(|check| check.name == "max_spend" && !check.passed)
+        );
+    }
+
+    #[test]
+    fn denies_when_cognitive_thresholds_fail() {
+        let mut request = valid_request();
+        request["runtime_context"]["cognitive_judge_scores_bps"] = json!([6000, 5800]);
+        request["runtime_context"]["cognitive_challenge_pass_bps"] = json!(7000);
+
+        let (decision, _event) = evaluate_request(&request, now());
+        assert!(!decision.allowed);
+        assert_eq!(decision.stage, "evaluate_policy");
+        assert_eq!(
+            decision.reason,
+            "cognitive average score is below hard-deny threshold"
+        );
+    }
+
+    #[test]
+    fn enforces_reputation_risk_multiplier() {
+        let mut request = valid_request();
+        request["runtime_context"]["reputation_score_bps"] = json!(3000);
+        request["runtime_context"]["risk_challenge_passed"] = json!(false);
+        request["runtime_context"]["extra_approval_granted"] = json!(false);
+
+        let (decision, _event) = evaluate_request(&request, now());
+        assert!(!decision.allowed);
+        assert_eq!(decision.stage, "evaluate_policy");
+        assert_eq!(
+            decision.reason,
+            "low reputation requires additional challenge pass or explicit approval"
         );
     }
 

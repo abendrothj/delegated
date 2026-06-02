@@ -222,5 +222,37 @@ fn validate_runtime_context(envelope: &RequestEnvelope) -> Result<(), Violation>
             target_calendar_id,
         )?;
     }
+    if let Some(cognitive_scores) = envelope.runtime_context.cognitive_judge_scores_bps.as_ref() {
+        if cognitive_scores.is_empty() {
+            return Err(Violation::new(
+                "normalize_request",
+                "request.runtime_context.cognitive_judge_scores_bps must be non-empty when set",
+            ));
+        }
+        for score in cognitive_scores {
+            if *score > 10_000 {
+                return Err(Violation::new(
+                    "normalize_request",
+                    "request.runtime_context.cognitive_judge_scores_bps must be <= 10000",
+                ));
+            }
+        }
+    }
+    if let Some(challenge_bps) = envelope.runtime_context.cognitive_challenge_pass_bps {
+        if challenge_bps > 10_000 {
+            return Err(Violation::new(
+                "normalize_request",
+                "request.runtime_context.cognitive_challenge_pass_bps must be <= 10000",
+            ));
+        }
+    }
+    if let Some(reputation_bps) = envelope.runtime_context.reputation_score_bps {
+        if reputation_bps > 10_000 {
+            return Err(Violation::new(
+                "normalize_request",
+                "request.runtime_context.reputation_score_bps must be <= 10000",
+            ));
+        }
+    }
     Ok(())
 }

@@ -78,6 +78,11 @@ pub struct RuntimeContext {
     pub delegation_depth: Option<u16>,
     pub target_email: Option<String>,
     pub target_calendar_id: Option<String>,
+    pub cognitive_judge_scores_bps: Option<Vec<u16>>,
+    pub cognitive_challenge_pass_bps: Option<u16>,
+    pub reputation_score_bps: Option<u16>,
+    pub risk_challenge_passed: Option<bool>,
+    pub extra_approval_granted: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
