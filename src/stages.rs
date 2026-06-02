@@ -1,7 +1,7 @@
 use crate::contracts::validate_request_contract;
 use crate::crypto::{verify_delegation_token_signature, verify_identity_document_signature};
 use crate::models::{RequestEnvelope, Violation};
-use crate::revocation::InMemoryTrustState;
+use crate::revocation::TrustStateStore;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
@@ -35,6 +35,25 @@ pub fn validate_token_lifetime(
         ));
     }
 
+    Ok(envelope)
+}
+
+pub fn validate_identity_document_lifetime(
+    envelope: RequestEnvelope,
+    now: DateTime<Utc>,
+) -> Result<RequestEnvelope, Violation> {
+    let identity_document = envelope.identity_document.as_ref().ok_or_else(|| {
+        Violation::new(
+            "validate_identity_document_lifetime",
+            "identity_document is required for lifetime checks",
+        )
+    })?;
+    if identity_document.expires_at <= now {
+        return Err(Violation::new(
+            "validate_identity_document_lifetime",
+            "identity document expired",
+        ));
+    }
     Ok(envelope)
 }
 
@@ -97,7 +116,7 @@ pub fn verify_signatures(envelope: RequestEnvelope) -> Result<RequestEnvelope, V
 
 pub fn enforce_revocation_and_redelegation(
     envelope: RequestEnvelope,
-    state: &mut InMemoryTrustState,
+    state: &mut dyn TrustStateStore,
 ) -> Result<RequestEnvelope, Violation> {
     let is_revoked = state
         .is_token_revoked(&envelope.token.token_id)
@@ -130,7 +149,7 @@ pub fn enforce_revocation_and_redelegation(
     }
 
     let nonce_was_new = state
-        .consume_nonce(&envelope.token.nonce)
+        .consume_nonce(&envelope.token.nonce, envelope.token.expires_at)
         .map_err(|reason| {
             Violation::new(
                 "enforce_revocation_and_redelegation",

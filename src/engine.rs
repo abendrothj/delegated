@@ -1,10 +1,10 @@
 use crate::audit::{AuditSink, JsonlFileAuditSink, write_audit_event};
 use crate::models::{AuditEvent, Decision, PolicyCheck, RequestEnvelope, Violation};
 use crate::policy::{evaluate_policy, simulate_policy};
-use crate::revocation::InMemoryTrustState;
+use crate::revocation::{InMemoryTrustState, TrustStateStore};
 use crate::stages::{
-    enforce_revocation_and_redelegation, normalize_request, validate_token_binding,
-    validate_token_lifetime, verify_signatures,
+    enforce_revocation_and_redelegation, normalize_request, validate_identity_document_lifetime,
+    validate_token_binding, validate_token_lifetime, verify_signatures,
 };
 use chrono::{DateTime, Utc};
 use serde_json::Value;
@@ -19,10 +19,11 @@ pub fn evaluate_request(raw_request: &Value, now: DateTime<Utc>) -> (Decision, A
 pub fn evaluate_request_with_state(
     raw_request: &Value,
     now: DateTime<Utc>,
-    trust_state: &mut InMemoryTrustState,
+    trust_state: &mut dyn TrustStateStore,
 ) -> (Decision, AuditEvent) {
     let result = normalize_request(raw_request)
         .and_then(verify_signatures)
+        .and_then(|envelope| validate_identity_document_lifetime(envelope, now))
         .and_then(|envelope| enforce_revocation_and_redelegation(envelope, trust_state))
         .and_then(|envelope| validate_token_lifetime(envelope, now))
         .and_then(validate_token_binding)
@@ -65,7 +66,7 @@ pub fn evaluate_and_audit_with_state(
     raw_request: &Value,
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
-    trust_state: &mut InMemoryTrustState,
+    trust_state: &mut dyn TrustStateStore,
 ) -> io::Result<Decision> {
     let (decision, event) = evaluate_request_with_state(raw_request, now, trust_state);
     write_audit_event(sink, &event)?;
@@ -259,6 +260,17 @@ mod tests {
         request["delegation_token"] = serde_json::to_value(token).expect("token serialization");
     }
 
+    fn resign_identity_document(request: &mut Value) {
+        let key = signing_key();
+        let mut identity: AgentIdentityDocument =
+            serde_json::from_value(request["identity_document"].clone())
+                .expect("identity document should parse");
+        identity.signature =
+            sign_identity_document(&identity, &key).expect("identity resign should work");
+        request["identity_document"] =
+            serde_json::to_value(identity).expect("identity serialization should work");
+    }
+
     #[test]
     fn allows_valid_request() {
         let (decision, event) = evaluate_request(&valid_request(), now());
@@ -289,6 +301,17 @@ mod tests {
         let (decision, _event) = evaluate_request(&request, now());
         assert!(!decision.allowed);
         assert_eq!(decision.stage, "validate_token_lifetime");
+    }
+
+    #[test]
+    fn denies_when_identity_document_expired() {
+        let mut request = valid_request();
+        request["identity_document"]["expires_at"] =
+            Value::String("2026-06-01T20:10:00Z".to_string());
+        resign_identity_document(&mut request);
+        let (decision, _event) = evaluate_request(&request, now());
+        assert!(!decision.allowed);
+        assert_eq!(decision.stage, "validate_identity_document_lifetime");
     }
 
     #[test]

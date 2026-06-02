@@ -28,7 +28,7 @@ pub use engine::{
     evaluate_request_with_state, simulate_request_policy,
 };
 pub use models::{AuditEvent, Decision, PolicyCheck, RequestEnvelope, Violation};
-pub use revocation::InMemoryTrustState;
+pub use revocation::{FileBackedTrustState, InMemoryTrustState, TrustStateStore};
 pub use wire::{
     A2aTrustEnvelope, McpTrustEnvelope, SharedTrustClaims, unwrap_a2a_claims, unwrap_mcp_claims,
     wrap_a2a_request, wrap_mcp_request,

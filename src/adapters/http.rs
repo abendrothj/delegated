@@ -1,6 +1,6 @@
 use crate::audit::AuditSink;
 use crate::engine::evaluate_and_audit_with_state;
-use crate::revocation::InMemoryTrustState;
+use crate::revocation::{InMemoryTrustState, TrustStateStore};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -24,7 +24,7 @@ pub fn handle_http_json_request_with_state(
     raw_body: &str,
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
-    trust_state: &mut InMemoryTrustState,
+    trust_state: &mut dyn TrustStateStore,
 ) -> HttpAdapterResponse {
     let raw_request: Value = match serde_json::from_str(raw_body) {
         Ok(value) => value,
