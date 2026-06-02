@@ -1,8 +1,10 @@
 use crate::audit::{AuditSink, JsonlFileAuditSink, write_audit_event};
 use crate::models::{AuditEvent, Decision, PolicyCheck, RequestEnvelope, Violation};
 use crate::policy::{evaluate_policy, simulate_policy};
+use crate::revocation::InMemoryTrustState;
 use crate::stages::{
-    normalize_request, validate_token_binding, validate_token_lifetime, verify_signatures,
+    enforce_revocation_and_redelegation, normalize_request, validate_token_binding,
+    validate_token_lifetime, verify_signatures,
 };
 use chrono::{DateTime, Utc};
 use serde_json::Value;
@@ -10,8 +12,18 @@ use std::io;
 use std::path::Path;
 
 pub fn evaluate_request(raw_request: &Value, now: DateTime<Utc>) -> (Decision, AuditEvent) {
+    let mut trust_state = InMemoryTrustState::new();
+    evaluate_request_with_state(raw_request, now, &mut trust_state)
+}
+
+pub fn evaluate_request_with_state(
+    raw_request: &Value,
+    now: DateTime<Utc>,
+    trust_state: &mut InMemoryTrustState,
+) -> (Decision, AuditEvent) {
     let result = normalize_request(raw_request)
         .and_then(verify_signatures)
+        .and_then(|envelope| enforce_revocation_and_redelegation(envelope, trust_state))
         .and_then(|envelope| validate_token_lifetime(envelope, now))
         .and_then(validate_token_binding)
         .and_then(evaluate_policy);
@@ -45,7 +57,17 @@ pub fn evaluate_and_audit(
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
 ) -> io::Result<Decision> {
-    let (decision, event) = evaluate_request(raw_request, now);
+    let mut trust_state = InMemoryTrustState::new();
+    evaluate_and_audit_with_state(raw_request, now, sink, &mut trust_state)
+}
+
+pub fn evaluate_and_audit_with_state(
+    raw_request: &Value,
+    now: DateTime<Utc>,
+    sink: &dyn AuditSink,
+    trust_state: &mut InMemoryTrustState,
+) -> io::Result<Decision> {
+    let (decision, event) = evaluate_request_with_state(raw_request, now, trust_state);
     write_audit_event(sink, &event)?;
     Ok(decision)
 }
@@ -109,6 +131,7 @@ mod tests {
         AgentEndpoint, AgentIdentityDocument, DelegationToken, PublicKeyRecord, RequestEnvelope,
         RuntimeContext,
     };
+    use crate::revocation::InMemoryTrustState;
     use base64ct::{Base64UrlUnpadded, Encoding};
     use chrono::TimeZone;
     use ed25519_dalek::SigningKey;
@@ -392,6 +415,47 @@ mod tests {
         let (decision, _event) = evaluate_request(&request, now());
         assert!(!decision.allowed);
         assert_eq!(decision.stage, "verify_signatures");
+    }
+
+    #[test]
+    fn denies_when_token_is_revoked() {
+        let request = valid_request();
+        let mut trust_state = InMemoryTrustState::new();
+        trust_state.revoke_token("dlg_01J0EXAMPLE");
+
+        let (decision, _event) = evaluate_request_with_state(&request, now(), &mut trust_state);
+        assert!(!decision.allowed);
+        assert_eq!(decision.stage, "enforce_revocation_and_redelegation");
+        assert_eq!(decision.reason, "delegation token has been revoked");
+    }
+
+    #[test]
+    fn denies_nonce_replay_with_shared_state() {
+        let request = valid_request();
+        let mut trust_state = InMemoryTrustState::new();
+
+        let (first, _) = evaluate_request_with_state(&request, now(), &mut trust_state);
+        let (second, _) = evaluate_request_with_state(&request, now(), &mut trust_state);
+
+        assert!(first.allowed);
+        assert!(!second.allowed);
+        assert_eq!(second.stage, "enforce_revocation_and_redelegation");
+        assert_eq!(second.reason, "delegation token nonce replay detected");
+    }
+
+    #[test]
+    fn fails_closed_when_revocation_backend_unavailable() {
+        let request = valid_request();
+        let mut trust_state = InMemoryTrustState::new();
+        trust_state.set_backend_available(false);
+
+        let (decision, _) = evaluate_request_with_state(&request, now(), &mut trust_state);
+        assert!(!decision.allowed);
+        assert_eq!(decision.stage, "enforce_revocation_and_redelegation");
+        assert_eq!(
+            decision.reason,
+            "revocation backend unavailable (fail-closed)"
+        );
     }
 
     #[test]

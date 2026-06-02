@@ -1,5 +1,6 @@
 use crate::audit::AuditSink;
-use crate::engine::evaluate_and_audit;
+use crate::engine::evaluate_and_audit_with_state;
+use crate::revocation::InMemoryTrustState;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -15,6 +16,16 @@ pub fn handle_http_json_request(
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
 ) -> HttpAdapterResponse {
+    let mut trust_state = InMemoryTrustState::new();
+    handle_http_json_request_with_state(raw_body, now, sink, &mut trust_state)
+}
+
+pub fn handle_http_json_request_with_state(
+    raw_body: &str,
+    now: DateTime<Utc>,
+    sink: &dyn AuditSink,
+    trust_state: &mut InMemoryTrustState,
+) -> HttpAdapterResponse {
     let raw_request: Value = match serde_json::from_str(raw_body) {
         Ok(value) => value,
         Err(error) => {
@@ -29,7 +40,7 @@ pub fn handle_http_json_request(
         }
     };
 
-    match evaluate_and_audit(&raw_request, now, sink) {
+    match evaluate_and_audit_with_state(&raw_request, now, sink, trust_state) {
         Ok(decision) => {
             if decision.allowed {
                 HttpAdapterResponse {
@@ -236,6 +247,31 @@ mod tests {
         let response = handle_http_json_request(&valid_request_body(), now(), &sink);
         assert_eq!(response.status_code, 500);
         assert_eq!(response.body["stage"], json!("audit_sink"));
+    }
+
+    #[test]
+    fn denies_nonce_replay_with_shared_state() {
+        let path = std::env::temp_dir().join(format!(
+            "agentauth_http_replay_{}.jsonl",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        ));
+        let sink = JsonlFileAuditSink::new(path.clone());
+        let mut trust_state = InMemoryTrustState::new();
+        let body = valid_request_body();
+
+        let first = handle_http_json_request_with_state(&body, now(), &sink, &mut trust_state);
+        let second = handle_http_json_request_with_state(&body, now(), &sink, &mut trust_state);
+
+        assert_eq!(first.status_code, 200);
+        assert_eq!(second.status_code, 403);
+        assert_eq!(
+            second.body["reason"],
+            json!("delegation token nonce replay detected")
+        );
+        std::fs::remove_file(path).expect("temporary audit file should be removable");
     }
 
     struct FailingSink;

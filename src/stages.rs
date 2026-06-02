@@ -1,6 +1,7 @@
 use crate::contracts::validate_request_contract;
 use crate::crypto::{verify_delegation_token_signature, verify_identity_document_signature};
 use crate::models::{RequestEnvelope, Violation};
+use crate::revocation::InMemoryTrustState;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
@@ -91,5 +92,67 @@ pub fn verify_signatures(envelope: RequestEnvelope) -> Result<RequestEnvelope, V
 
     verify_identity_document_signature(identity_document)?;
     verify_delegation_token_signature(&envelope.token, identity_document)?;
+    Ok(envelope)
+}
+
+pub fn enforce_revocation_and_redelegation(
+    envelope: RequestEnvelope,
+    state: &mut InMemoryTrustState,
+) -> Result<RequestEnvelope, Violation> {
+    let is_revoked = state
+        .is_token_revoked(&envelope.token.token_id)
+        .map_err(|reason| {
+            Violation::new(
+                "enforce_revocation_and_redelegation",
+                format!("{reason} (fail-closed)"),
+            )
+        })?;
+    if is_revoked {
+        return Err(Violation::new(
+            "enforce_revocation_and_redelegation",
+            "delegation token has been revoked",
+        ));
+    }
+
+    let is_agent_denied = state
+        .is_agent_emergency_denied(&envelope.agent_id)
+        .map_err(|reason| {
+            Violation::new(
+                "enforce_revocation_and_redelegation",
+                format!("{reason} (fail-closed)"),
+            )
+        })?;
+    if is_agent_denied {
+        return Err(Violation::new(
+            "enforce_revocation_and_redelegation",
+            "agent is blocked by emergency deny list",
+        ));
+    }
+
+    let nonce_was_new = state
+        .consume_nonce(&envelope.token.nonce)
+        .map_err(|reason| {
+            Violation::new(
+                "enforce_revocation_and_redelegation",
+                format!("{reason} (fail-closed)"),
+            )
+        })?;
+    if !nonce_was_new {
+        return Err(Violation::new(
+            "enforce_revocation_and_redelegation",
+            "delegation token nonce replay detected",
+        ));
+    }
+
+    if let Some(max_depth) = envelope.token.max_delegation_depth {
+        let runtime_depth = envelope.runtime_context.delegation_depth.unwrap_or(0);
+        if runtime_depth > max_depth {
+            return Err(Violation::new(
+                "enforce_revocation_and_redelegation",
+                "runtime delegation depth exceeds token max_delegation_depth",
+            ));
+        }
+    }
+
     Ok(envelope)
 }
