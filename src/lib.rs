@@ -3,6 +3,7 @@ pub mod audit;
 pub mod contracts;
 pub mod crypto;
 pub mod delegation_ux;
+pub mod discovery;
 pub mod engine;
 pub mod models;
 pub mod policy;
@@ -28,6 +29,9 @@ pub use delegation_ux::{
     ApprovalCallbackPayload, ApprovalDecision, ConsentReceipt, ConsentStatus,
     DelegationGrantProposal, issue_consent_receipt, issue_revocation_receipt,
     render_cli_grant_summary, to_approval_callback,
+};
+pub use discovery::{
+    DiscoveryService, IssuerMetadata, JwkRecord, JwksDocument, build_jwks_document,
 };
 pub use engine::{
     append_audit_event, evaluate_and_audit, evaluate_and_audit_with_state, evaluate_request,
