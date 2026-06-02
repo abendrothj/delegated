@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentauth.dev/schemas/agent-identity-document.schema.json",
+  "title": "AgentIdentityDocument",
+  "type": "object",
+  "required": [
+    "spec_version",
+    "kind",
+    "agent_id",
+    "owner_id",
+    "issuer",
+    "identity_type",
+    "subject",
+    "public_keys",
+    "supported_protocols",
+    "supported_auth_methods",
+    "endpoints",
+    "created_at",
+    "expires_at",
+    "signature"
+  ],
+  "properties": {
+    "spec_version": { "type": "string", "const": "0.1" },
+    "kind": { "type": "string", "const": "AgentIdentityDocument" },
+    "agent_id": { "type": "string", "minLength": 1 },
+    "display_name": { "type": "string", "minLength": 1 },
+    "owner_id": { "type": "string", "minLength": 1 },
+    "issuer": { "type": "string", "minLength": 1 },
+    "identity_type": { "type": "string", "minLength": 1 },
+    "subject": { "type": "string", "minLength": 1 },
+    "public_keys": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["kid", "kty"],
+        "properties": {
+          "kid": { "type": "string", "minLength": 1 },
+          "kty": { "type": "string", "minLength": 1 },
+          "crv": { "type": "string", "minLength": 1 },
+          "x": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "supported_protocols": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "supported_auth_methods": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "endpoints": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["protocol", "url"],
+        "properties": {
+          "protocol": { "type": "string", "minLength": 1 },
+          "url": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "attestation": {
+      "type": "object",
+      "required": ["type", "issuer", "evidence_ref"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "issuer": { "type": "string", "minLength": 1 },
+        "evidence_ref": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "signature": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": true
+}
