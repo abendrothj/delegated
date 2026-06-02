@@ -45,6 +45,8 @@ pub struct DelegationToken {
     pub expires_at: DateTime<Utc>,
     pub intent: Option<String>,
     pub nonce: String,
+    pub key_id: String,
+    pub signature_alg: String,
     pub signature: String,
 }
 

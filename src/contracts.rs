@@ -1,3 +1,4 @@
+use crate::crypto::TOKEN_SIGNATURE_ALG_ED25519;
 use crate::models::{AgentIdentityDocument, DelegationToken, RequestEnvelope, Violation};
 
 pub const SPEC_VERSION_V0_1: &str = "0.1";
@@ -45,6 +46,8 @@ fn validate_delegation_token(token: &DelegationToken) -> Result<(), Violation> {
     validate_non_empty("delegation_token.delegator_id", &token.delegator_id)?;
     validate_non_empty("delegation_token.owner_id", &token.owner_id)?;
     validate_non_empty("delegation_token.nonce", &token.nonce)?;
+    validate_non_empty("delegation_token.key_id", &token.key_id)?;
+    validate_non_empty("delegation_token.signature_alg", &token.signature_alg)?;
     validate_non_empty("delegation_token.signature", &token.signature)?;
     validate_non_empty_vec("delegation_token.audience", &token.audience)?;
     validate_non_empty_vec("delegation_token.allowed_actions", &token.allowed_actions)?;
@@ -77,6 +80,15 @@ fn validate_delegation_token(token: &DelegationToken) -> Result<(), Violation> {
 
     if let Some(max_spend) = token.max_spend.as_ref() {
         validate_non_empty("delegation_token.max_spend.currency", &max_spend.currency)?;
+    }
+    if token.signature_alg != TOKEN_SIGNATURE_ALG_ED25519 {
+        return Err(Violation::new(
+            "normalize_request",
+            format!(
+                "delegation_token.signature_alg must equal {}",
+                TOKEN_SIGNATURE_ALG_ED25519
+            ),
+        ));
     }
 
     Ok(())
@@ -117,11 +129,36 @@ fn validate_identity_document(document: &AgentIdentityDocument) -> Result<(), Vi
     for key in &document.public_keys {
         validate_non_empty("identity_document.public_keys[].kid", &key.kid)?;
         validate_non_empty("identity_document.public_keys[].kty", &key.kty)?;
+        if key.kty != "OKP" {
+            return Err(Violation::new(
+                "normalize_request",
+                "identity_document.public_keys[].kty must be OKP",
+            ));
+        }
         if let Some(crv) = key.crv.as_ref() {
             validate_non_empty("identity_document.public_keys[].crv", crv)?;
+            if crv != TOKEN_SIGNATURE_ALG_ED25519 {
+                return Err(Violation::new(
+                    "normalize_request",
+                    format!(
+                        "identity_document.public_keys[].crv must equal {}",
+                        TOKEN_SIGNATURE_ALG_ED25519
+                    ),
+                ));
+            }
+        } else {
+            return Err(Violation::new(
+                "normalize_request",
+                "identity_document.public_keys[].crv is required",
+            ));
         }
         if let Some(x) = key.x.as_ref() {
             validate_non_empty("identity_document.public_keys[].x", x)?;
+        } else {
+            return Err(Violation::new(
+                "normalize_request",
+                "identity_document.public_keys[].x is required",
+            ));
         }
     }
 

@@ -16,6 +16,8 @@
     "issued_at",
     "expires_at",
     "nonce",
+    "key_id",
+    "signature_alg",
     "signature"
   ],
   "properties": {
@@ -65,6 +67,8 @@
     "issued_at": { "type": "string", "format": "date-time" },
     "expires_at": { "type": "string", "format": "date-time" },
     "nonce": { "type": "string", "minLength": 1 },
+    "key_id": { "type": "string", "minLength": 1 },
+    "signature_alg": { "type": "string", "const": "Ed25519" },
     "signature": { "type": "string", "minLength": 1 }
   },
   "additionalProperties": true

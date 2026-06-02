@@ -103,6 +103,8 @@ mod tests {
                 "issued_at": "2026-06-01T20:10:00Z",
                 "expires_at": "2026-06-01T20:40:00Z",
                 "nonce": "random-nonce",
+                "key_id": "key-2026-01",
+                "signature_alg": "Ed25519",
                 "signature": "base64url-signature"
             }
         })
