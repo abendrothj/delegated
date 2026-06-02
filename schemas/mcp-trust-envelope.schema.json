@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentauth.dev/schemas/mcp-trust-envelope.schema.json",
+  "title": "McpTrustEnvelope",
+  "type": "object",
+  "required": ["protocol", "protocol_version", "trust_claims", "mcp_payload"],
+  "properties": {
+    "protocol": { "type": "string", "const": "mcp" },
+    "protocol_version": { "type": "string", "minLength": 1 },
+    "trust_claims": {
+      "$ref": "shared-trust-claims.schema.json"
+    },
+    "mcp_payload": {}
+  },
+  "additionalProperties": true
+}

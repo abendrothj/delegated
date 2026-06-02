@@ -7,6 +7,7 @@ pub mod models;
 pub mod policy;
 pub mod revocation;
 pub mod stages;
+pub mod wire;
 
 pub use adapters::http::{
     HttpAdapterResponse, handle_http_json_request, handle_http_json_request_with_state,
@@ -22,3 +23,7 @@ pub use engine::{
 };
 pub use models::{AuditEvent, Decision, PolicyCheck, RequestEnvelope, Violation};
 pub use revocation::InMemoryTrustState;
+pub use wire::{
+    A2aTrustEnvelope, McpTrustEnvelope, SharedTrustClaims, unwrap_a2a_claims, unwrap_mcp_claims,
+    wrap_a2a_request, wrap_mcp_request,
+};
