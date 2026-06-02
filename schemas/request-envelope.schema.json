@@ -16,6 +16,7 @@
     "spec_version": { "type": "string", "const": "0.1" },
     "kind": { "type": "string", "const": "TrustRequestEnvelope" },
     "request_id": { "type": "string", "minLength": 1 },
+    "profile": { "type": "string", "enum": ["developer", "oidc", "spiffe"] },
     "agent_id": { "type": "string", "minLength": 1 },
     "delegator_id": { "type": "string", "minLength": 1 },
     "audience": { "type": "string", "minLength": 1 },

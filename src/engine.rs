@@ -1,6 +1,7 @@
 use crate::audit::{AuditSink, JsonlFileAuditSink, write_audit_event};
 use crate::models::{AuditEvent, Decision, PolicyCheck, RequestEnvelope, Violation};
 use crate::policy::{evaluate_policy, simulate_policy};
+use crate::profiles::validate_profile_compatibility;
 use crate::revocation::{InMemoryTrustState, TrustStateStore};
 use crate::stages::{
     enforce_revocation_and_redelegation, normalize_request, validate_identity_document_lifetime,
@@ -22,6 +23,7 @@ pub fn evaluate_request_with_state(
     trust_state: &mut dyn TrustStateStore,
 ) -> (Decision, AuditEvent) {
     let result = normalize_request(raw_request)
+        .and_then(validate_profile_compatibility)
         .and_then(verify_signatures)
         .and_then(|envelope| validate_identity_document_lifetime(envelope, now))
         .and_then(|envelope| enforce_revocation_and_redelegation(envelope, trust_state))
@@ -130,7 +132,7 @@ mod tests {
     };
     use crate::models::{
         AgentEndpoint, AgentIdentityDocument, DelegationToken, PublicKeyRecord, RequestEnvelope,
-        RuntimeContext,
+        RuntimeContext, TrustProfile,
     };
     use crate::revocation::InMemoryTrustState;
     use base64ct::{Base64UrlUnpadded, Encoding};
@@ -227,6 +229,7 @@ mod tests {
             spec_version: "0.1".to_string(),
             kind: "TrustRequestEnvelope".to_string(),
             request_id: Some("req_123".to_string()),
+            profile: TrustProfile::Developer,
             agent_id: "agent:example:scheduler:v1".to_string(),
             delegator_id: "user:jake-abendroth".to_string(),
             audience: "tool:google-calendar".to_string(),
@@ -437,7 +440,7 @@ mod tests {
         request["identity_document"] = Value::Null;
         let (decision, _event) = evaluate_request(&request, now());
         assert!(!decision.allowed);
-        assert_eq!(decision.stage, "verify_signatures");
+        assert_eq!(decision.stage, "validate_profile_compatibility");
     }
 
     #[test]

@@ -55,6 +55,8 @@ pub struct RequestEnvelope {
     pub spec_version: String,
     pub kind: String,
     pub request_id: Option<String>,
+    #[serde(default)]
+    pub profile: TrustProfile,
     pub agent_id: String,
     pub delegator_id: String,
     pub audience: String,
@@ -65,6 +67,15 @@ pub struct RequestEnvelope {
     pub identity_document: Option<AgentIdentityDocument>,
     #[serde(rename = "delegation_token")]
     pub token: DelegationToken,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TrustProfile {
+    #[default]
+    Developer,
+    Oidc,
+    Spiffe,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

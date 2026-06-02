@@ -1,4 +1,6 @@
-use crate::models::{AgentIdentityDocument, DelegationToken, RequestEnvelope, RuntimeContext};
+use crate::models::{
+    AgentIdentityDocument, DelegationToken, RequestEnvelope, RuntimeContext, TrustProfile,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -11,6 +13,8 @@ pub struct SharedTrustClaims {
     pub spec_version: String,
     pub kind: String,
     pub request_id: Option<String>,
+    #[serde(default)]
+    pub profile: TrustProfile,
     pub agent_id: String,
     pub delegator_id: String,
     pub audience: String,
@@ -45,6 +49,7 @@ impl From<RequestEnvelope> for SharedTrustClaims {
             spec_version: request.spec_version,
             kind: SHARED_CLAIMS_KIND.to_string(),
             request_id: request.request_id,
+            profile: request.profile,
             agent_id: request.agent_id,
             delegator_id: request.delegator_id,
             audience: request.audience,
@@ -63,6 +68,7 @@ impl From<SharedTrustClaims> for RequestEnvelope {
             spec_version: claims.spec_version,
             kind: "TrustRequestEnvelope".to_string(),
             request_id: claims.request_id,
+            profile: claims.profile,
             agent_id: claims.agent_id,
             delegator_id: claims.delegator_id,
             audience: claims.audience,
@@ -121,6 +127,7 @@ mod tests {
             spec_version: "0.1".to_string(),
             kind: "TrustRequestEnvelope".to_string(),
             request_id: Some("req_wire_123".to_string()),
+            profile: TrustProfile::Developer,
             agent_id: "agent:example:scheduler:v1".to_string(),
             delegator_id: "user:jake-abendroth".to_string(),
             audience: "tool:google-calendar".to_string(),

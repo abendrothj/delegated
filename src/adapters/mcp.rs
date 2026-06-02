@@ -201,7 +201,7 @@ mod tests {
     };
     use crate::models::{
         AgentEndpoint, AgentIdentityDocument, DelegationToken, PublicKeyRecord, RequestEnvelope,
-        RuntimeContext,
+        RuntimeContext, TrustProfile,
     };
     use base64ct::{Base64UrlUnpadded, Encoding};
     use chrono::TimeZone;
@@ -285,6 +285,7 @@ mod tests {
             spec_version: "0.1".to_string(),
             kind: "TrustRequestEnvelope".to_string(),
             request_id: Some("req_mcp_123".to_string()),
+            profile: TrustProfile::Developer,
             agent_id: "agent:example:scheduler:v1".to_string(),
             delegator_id: "user:jake-abendroth".to_string(),
             audience: "tool:google-calendar".to_string(),

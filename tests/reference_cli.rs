@@ -1,6 +1,6 @@
 use agentauth::models::{
     AgentEndpoint, AgentIdentityDocument, DelegationToken, PublicKeyRecord, RequestEnvelope,
-    RuntimeContext,
+    RuntimeContext, TrustProfile,
 };
 use agentauth::{TOKEN_SIGNATURE_ALG_ED25519, sign_delegation_token, sign_identity_document};
 use base64ct::{Base64UrlUnpadded, Encoding};
@@ -95,6 +95,7 @@ fn signed_request_json() -> Value {
         spec_version: "0.1".to_string(),
         kind: "TrustRequestEnvelope".to_string(),
         request_id: Some("req_cli_verify".to_string()),
+        profile: TrustProfile::Developer,
         agent_id: "agent:example:scheduler:v1".to_string(),
         delegator_id: "user:jake-abendroth".to_string(),
         audience: "tool:google-calendar".to_string(),

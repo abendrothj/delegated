@@ -1,5 +1,6 @@
 use agentauth::models::{
     AgentEndpoint, AgentIdentityDocument, DelegationToken, PublicKeyRecord, RuntimeContext,
+    TrustProfile,
 };
 use agentauth::{
     InMemoryTrustState, JsonlFileAuditSink, RequestEnvelope, TOKEN_SIGNATURE_ALG_ED25519,
@@ -91,6 +92,7 @@ fn signed_request_value(request_id: &str, nonce: &str) -> Value {
         spec_version: "0.1".to_string(),
         kind: "TrustRequestEnvelope".to_string(),
         request_id: Some(request_id.to_string()),
+        profile: TrustProfile::Developer,
         agent_id: "agent:example:scheduler:v1".to_string(),
         delegator_id: "user:jake-abendroth".to_string(),
         audience: "tool:google-calendar".to_string(),
