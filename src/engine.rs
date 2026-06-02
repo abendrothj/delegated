@@ -1,10 +1,10 @@
+use crate::audit::{AuditSink, JsonlFileAuditSink, write_audit_event};
 use crate::models::{AuditEvent, Decision, PolicyCheck, RequestEnvelope, Violation};
 use crate::policy::{evaluate_policy, simulate_policy};
 use crate::stages::{normalize_request, validate_token_binding, validate_token_lifetime};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
-use std::fs::OpenOptions;
-use std::io::{self, Write};
+use std::io;
 use std::path::Path;
 
 pub fn evaluate_request(raw_request: &Value, now: DateTime<Utc>) -> (Decision, AuditEvent) {
@@ -33,9 +33,18 @@ pub fn simulate_request_policy(raw_request: &Value) -> Result<Vec<PolicyCheck>, 
 }
 
 pub fn append_audit_event(path: impl AsRef<Path>, event: &AuditEvent) -> io::Result<()> {
-    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
-    let line = serde_json::to_string(event).map_err(io::Error::other)?;
-    writeln!(file, "{line}")
+    let sink = JsonlFileAuditSink::new(path.as_ref().to_path_buf());
+    write_audit_event(&sink, event)
+}
+
+pub fn evaluate_and_audit(
+    raw_request: &Value,
+    now: DateTime<Utc>,
+    sink: &dyn AuditSink,
+) -> io::Result<Decision> {
+    let (decision, event) = evaluate_request(raw_request, now);
+    write_audit_event(sink, &event)?;
+    Ok(decision)
 }
 
 fn from_envelope(envelope: RequestEnvelope, decision: &Decision, now: DateTime<Utc>) -> AuditEvent {
@@ -252,5 +261,33 @@ mod tests {
         std::fs::remove_file(&path).expect("temporary audit file should be removable");
         assert!(contents.contains("\"allowed\":true"));
         assert!(contents.contains("\"token_id\":\"dlg_01J0EXAMPLE\""));
+    }
+
+    #[test]
+    fn evaluates_and_writes_allow_and_deny_audits() {
+        let path = std::env::temp_dir().join(format!(
+            "agentauth_sink_{}.jsonl",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        ));
+        let sink = JsonlFileAuditSink::new(path.clone());
+
+        let allow_decision =
+            evaluate_and_audit(&valid_request(), now(), &sink).expect("allow path should write");
+        assert!(allow_decision.allowed);
+
+        let mut deny_request = valid_request();
+        deny_request["action"] = Value::String("calendar.delete_event".to_string());
+        let deny_decision =
+            evaluate_and_audit(&deny_request, now(), &sink).expect("deny path should write");
+        assert!(!deny_decision.allowed);
+
+        let contents = std::fs::read_to_string(&path).expect("audit file should exist");
+        std::fs::remove_file(&path).expect("temporary audit file should be removable");
+        assert_eq!(contents.lines().count(), 2);
+        assert!(contents.contains("\"allowed\":true"));
+        assert!(contents.contains("\"allowed\":false"));
     }
 }
