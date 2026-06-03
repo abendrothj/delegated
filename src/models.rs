@@ -172,7 +172,7 @@ impl Decision {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuditEvent {
     pub occurred_at: DateTime<Utc>,
     pub allowed: bool,
@@ -186,7 +186,7 @@ pub struct AuditEvent {
     pub token_id: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PolicyCheck {
     pub name: String,
     pub passed: bool,

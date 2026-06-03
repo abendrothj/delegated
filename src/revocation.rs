@@ -37,6 +37,11 @@ pub trait TrustStateStore {
     ) -> Result<bool, TrustStateError>;
 }
 
+pub trait TrustStateAdmin: TrustStateStore {
+    fn revoke_token(&mut self, token_id: &str) -> Result<(), TrustStateError>;
+    fn emergency_deny_agent(&mut self, agent_id: &str) -> Result<(), TrustStateError>;
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct InMemoryTrustState {
     revoked_token_ids: HashSet<String>,
@@ -55,12 +60,20 @@ impl InMemoryTrustState {
         }
     }
 
-    pub fn revoke_token(&mut self, token_id: impl Into<String>) {
+    pub fn revoke_token_local(&mut self, token_id: impl Into<String>) {
         self.revoked_token_ids.insert(token_id.into());
     }
 
-    pub fn emergency_deny_agent(&mut self, agent_id: impl Into<String>) {
+    pub fn revoke_token(&mut self, token_id: impl Into<String>) {
+        self.revoke_token_local(token_id);
+    }
+
+    pub fn emergency_deny_agent_local(&mut self, agent_id: impl Into<String>) {
         self.emergency_denied_agents.insert(agent_id.into());
+    }
+
+    pub fn emergency_deny_agent(&mut self, agent_id: impl Into<String>) {
+        self.emergency_deny_agent_local(agent_id);
     }
 
     pub fn clear_nonce_history(&mut self) {
@@ -111,6 +124,20 @@ impl TrustStateStore for InMemoryTrustState {
     }
 }
 
+impl TrustStateAdmin for InMemoryTrustState {
+    fn revoke_token(&mut self, token_id: &str) -> Result<(), TrustStateError> {
+        self.ensure_available()?;
+        self.revoked_token_ids.insert(token_id.to_string());
+        Ok(())
+    }
+
+    fn emergency_deny_agent(&mut self, agent_id: &str) -> Result<(), TrustStateError> {
+        self.ensure_available()?;
+        self.emergency_denied_agents.insert(agent_id.to_string());
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FileBackedTrustState {
     path: PathBuf,
@@ -129,7 +156,10 @@ impl FileBackedTrustState {
         self.backend_available = available;
     }
 
-    pub fn revoke_token(&mut self, token_id: impl Into<String>) -> Result<(), TrustStateError> {
+    pub fn revoke_token_local(
+        &mut self,
+        token_id: impl Into<String>,
+    ) -> Result<(), TrustStateError> {
         self.ensure_available()?;
         let _lock = self.acquire_lock()?;
         let mut persisted = self.load_persisted()?;
@@ -137,7 +167,11 @@ impl FileBackedTrustState {
         self.save_persisted(&persisted)
     }
 
-    pub fn emergency_deny_agent(
+    pub fn revoke_token(&mut self, token_id: impl Into<String>) -> Result<(), TrustStateError> {
+        self.revoke_token_local(token_id)
+    }
+
+    pub fn emergency_deny_agent_local(
         &mut self,
         agent_id: impl Into<String>,
     ) -> Result<(), TrustStateError> {
@@ -146,6 +180,13 @@ impl FileBackedTrustState {
         let mut persisted = self.load_persisted()?;
         persisted.emergency_denied_agents.insert(agent_id.into());
         self.save_persisted(&persisted)
+    }
+
+    pub fn emergency_deny_agent(
+        &mut self,
+        agent_id: impl Into<String>,
+    ) -> Result<(), TrustStateError> {
+        self.emergency_deny_agent_local(agent_id)
     }
 
     fn ensure_available(&self) -> Result<(), TrustStateError> {
@@ -252,6 +293,16 @@ impl TrustStateStore for FileBackedTrustState {
             .insert(nonce.to_string(), valid_until);
         self.save_persisted(&persisted)?;
         Ok(true)
+    }
+}
+
+impl TrustStateAdmin for FileBackedTrustState {
+    fn revoke_token(&mut self, token_id: &str) -> Result<(), TrustStateError> {
+        self.revoke_token_local(token_id.to_string())
+    }
+
+    fn emergency_deny_agent(&mut self, agent_id: &str) -> Result<(), TrustStateError> {
+        self.emergency_deny_agent_local(agent_id.to_string())
     }
 }
 

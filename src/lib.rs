@@ -1,6 +1,7 @@
 pub mod adapters;
 pub mod audit;
 pub mod contracts;
+pub mod control_plane;
 pub mod crypto;
 pub mod delegation_ux;
 pub mod discovery;
@@ -21,7 +22,12 @@ pub use adapters::http::{
 pub use adapters::mcp::{
     McpJsonRpcResponse, handle_mcp_jsonrpc_request, handle_mcp_jsonrpc_request_with_state,
 };
-pub use audit::{AuditSink, JsonlFileAuditSink};
+pub use audit::{AuditQuery, AuditReader, AuditSink, JsonlFileAuditSink};
+pub use control_plane::{
+    ApprovalOperation, OperationalReport, PolicySimulationResult, RevocationOperation,
+    build_operational_report, emergency_deny_agent, export_audit_events, record_approval_decision,
+    revoke_token_with_receipt, simulate_policy,
+};
 pub use crypto::{
     SIGNATURE_ENCODING_BASE64URL_NO_PAD, SIGNATURE_WIRE_FORMAT, TOKEN_SIGNATURE_ALG_ED25519,
     sign_delegation_token, sign_identity_document,
@@ -40,7 +46,7 @@ pub use engine::{
 };
 pub use models::{AuditEvent, Decision, PolicyCheck, RequestEnvelope, TrustProfile, Violation};
 pub use profiles::validate_profile_compatibility;
-pub use revocation::{FileBackedTrustState, InMemoryTrustState, TrustStateStore};
+pub use revocation::{FileBackedTrustState, InMemoryTrustState, TrustStateAdmin, TrustStateStore};
 pub use wire::{
     A2aTrustEnvelope, McpTrustEnvelope, SharedTrustClaims, unwrap_a2a_claims, unwrap_mcp_claims,
     wrap_a2a_request, wrap_mcp_request,
