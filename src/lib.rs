@@ -14,13 +14,16 @@ pub mod stages;
 pub mod wire;
 
 pub use adapters::a2a::{
-    A2aProtocolRequest, A2aProtocolResponse, handle_a2a_request, handle_a2a_request_with_state,
+    A2aProtocolRequest, A2aProtocolResponse, handle_a2a_request,
+    handle_a2a_request_with_runtime_config, handle_a2a_request_with_state,
 };
 pub use adapters::http::{
-    HttpAdapterResponse, handle_http_json_request, handle_http_json_request_with_state,
+    HttpAdapterResponse, handle_http_json_request, handle_http_json_request_with_runtime_config,
+    handle_http_json_request_with_state,
 };
 pub use adapters::mcp::{
-    McpJsonRpcResponse, handle_mcp_jsonrpc_request, handle_mcp_jsonrpc_request_with_state,
+    McpJsonRpcResponse, handle_mcp_jsonrpc_request, handle_mcp_jsonrpc_request_with_runtime_config,
+    handle_mcp_jsonrpc_request_with_state,
 };
 pub use audit::{AuditQuery, AuditReader, AuditSink, JsonlFileAuditSink};
 pub use control_plane::{
@@ -41,12 +44,16 @@ pub use discovery::{
     DiscoveryService, IssuerMetadata, JwkRecord, JwksDocument, build_jwks_document,
 };
 pub use engine::{
-    append_audit_event, evaluate_and_audit, evaluate_and_audit_with_state, evaluate_request,
+    append_audit_event, evaluate_and_audit, evaluate_and_audit_with_runtime_config,
+    evaluate_and_audit_with_state, evaluate_request, evaluate_request_with_runtime_config,
     evaluate_request_with_state, simulate_request_policy,
 };
 pub use models::{AuditEvent, Decision, PolicyCheck, RequestEnvelope, TrustProfile, Violation};
 pub use profiles::validate_profile_compatibility;
-pub use revocation::{FileBackedTrustState, InMemoryTrustState, TrustStateAdmin, TrustStateStore};
+pub use revocation::{
+    FileBackedTrustState, InMemoryTrustState, RuntimeTrustConfig, TrustStateAdmin,
+    TrustStateBackend, TrustStateStore, default_trust_state_path,
+};
 pub use wire::{
     A2aTrustEnvelope, McpTrustEnvelope, SharedTrustClaims, unwrap_a2a_claims, unwrap_mcp_claims,
     wrap_a2a_request, wrap_mcp_request,

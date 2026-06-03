@@ -1,6 +1,6 @@
 use crate::audit::AuditSink;
 use crate::engine::evaluate_and_audit_with_state;
-use crate::revocation::{InMemoryTrustState, TrustStateStore};
+use crate::revocation::{RuntimeTrustConfig, TrustStateStore, trust_state_from_runtime_config};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -16,8 +16,22 @@ pub fn handle_http_json_request(
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
 ) -> HttpAdapterResponse {
-    let mut trust_state = InMemoryTrustState::new();
-    handle_http_json_request_with_state(raw_body, now, sink, &mut trust_state)
+    handle_http_json_request_with_runtime_config(
+        raw_body,
+        now,
+        sink,
+        &RuntimeTrustConfig::default(),
+    )
+}
+
+pub fn handle_http_json_request_with_runtime_config(
+    raw_body: &str,
+    now: DateTime<Utc>,
+    sink: &dyn AuditSink,
+    runtime_config: &RuntimeTrustConfig,
+) -> HttpAdapterResponse {
+    let mut trust_state = trust_state_from_runtime_config(runtime_config);
+    handle_http_json_request_with_state(raw_body, now, sink, trust_state.as_mut())
 }
 
 pub fn handle_http_json_request_with_state(
@@ -84,10 +98,14 @@ mod tests {
         AgentEndpoint, AgentIdentityDocument, AuditEvent, DelegationToken, PublicKeyRecord,
         RequestEnvelope, RuntimeContext, TrustProfile,
     };
+    use crate::revocation::InMemoryTrustState;
     use base64ct::{Base64UrlUnpadded, Encoding};
     use chrono::TimeZone;
     use ed25519_dalek::SigningKey;
     use std::io;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 
     fn now() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 6, 1, 20, 20, 0)
@@ -99,7 +117,17 @@ mod tests {
         SigningKey::from_bytes(&[9u8; 32])
     }
 
+    fn unique_id() -> String {
+        let counter = REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time should be after epoch")
+            .as_nanos();
+        format!("{counter}_{nanos}")
+    }
+
     fn valid_request_body() -> String {
+        let unique_id = unique_id();
         let key = signing_key();
         let mut identity_document = AgentIdentityDocument {
             spec_version: "0.1".to_string(),
@@ -142,7 +170,7 @@ mod tests {
         let mut token = DelegationToken {
             spec_version: "0.1".to_string(),
             kind: "DelegationToken".to_string(),
-            token_id: "dlg_http_01".to_string(),
+            token_id: format!("dlg_http_{unique_id}"),
             issuer: "https://trust.example.ai".to_string(),
             agent_id: "agent:example:scheduler:v1".to_string(),
             delegator_id: "user:jake-abendroth".to_string(),
@@ -162,7 +190,7 @@ mod tests {
                 .single()
                 .expect("valid timestamp"),
             intent: None,
-            nonce: "random-nonce".to_string(),
+            nonce: format!("random-nonce-{unique_id}"),
             key_id: "key-2026-01".to_string(),
             signature_alg: TOKEN_SIGNATURE_ALG_ED25519.to_string(),
             signature: String::new(),
@@ -172,7 +200,7 @@ mod tests {
         let request = RequestEnvelope {
             spec_version: "0.1".to_string(),
             kind: "TrustRequestEnvelope".to_string(),
-            request_id: Some("req_http_123".to_string()),
+            request_id: Some(format!("req_http_{unique_id}")),
             profile: TrustProfile::Developer,
             agent_id: "agent:example:scheduler:v1".to_string(),
             delegator_id: "user:jake-abendroth".to_string(),

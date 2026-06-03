@@ -1,7 +1,7 @@
 use crate::audit::AuditSink;
 use crate::engine::evaluate_and_audit_with_state;
 use crate::models::RequestEnvelope;
-use crate::revocation::{InMemoryTrustState, TrustStateStore};
+use crate::revocation::{RuntimeTrustConfig, TrustStateStore, trust_state_from_runtime_config};
 use crate::wire::{SHARED_CLAIMS_KIND, SharedTrustClaims};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -22,8 +22,22 @@ pub fn handle_mcp_jsonrpc_request(
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
 ) -> McpJsonRpcResponse {
-    let mut trust_state = InMemoryTrustState::new();
-    handle_mcp_jsonrpc_request_with_state(raw_body, now, sink, &mut trust_state)
+    handle_mcp_jsonrpc_request_with_runtime_config(
+        raw_body,
+        now,
+        sink,
+        &RuntimeTrustConfig::default(),
+    )
+}
+
+pub fn handle_mcp_jsonrpc_request_with_runtime_config(
+    raw_body: &str,
+    now: DateTime<Utc>,
+    sink: &dyn AuditSink,
+    runtime_config: &RuntimeTrustConfig,
+) -> McpJsonRpcResponse {
+    let mut trust_state = trust_state_from_runtime_config(runtime_config);
+    handle_mcp_jsonrpc_request_with_state(raw_body, now, sink, trust_state.as_mut())
 }
 
 pub fn handle_mcp_jsonrpc_request_with_state(
@@ -203,9 +217,13 @@ mod tests {
         AgentEndpoint, AgentIdentityDocument, DelegationToken, PublicKeyRecord, RequestEnvelope,
         RuntimeContext, TrustProfile,
     };
+    use crate::revocation::InMemoryTrustState;
     use base64ct::{Base64UrlUnpadded, Encoding};
     use chrono::TimeZone;
     use ed25519_dalek::SigningKey;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 
     fn now() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 6, 1, 20, 20, 0)
@@ -213,7 +231,17 @@ mod tests {
             .expect("valid test timestamp")
     }
 
+    fn unique_id() -> String {
+        let counter = REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time should be after epoch")
+            .as_nanos();
+        format!("{counter}_{nanos}")
+    }
+
     fn signed_shared_claims(nonce: &str) -> SharedTrustClaims {
+        let unique_id = unique_id();
         let key = SigningKey::from_bytes(&[12u8; 32]);
         let mut identity = AgentIdentityDocument {
             spec_version: "0.1".to_string(),
@@ -255,7 +283,7 @@ mod tests {
         let mut token = DelegationToken {
             spec_version: "0.1".to_string(),
             kind: "DelegationToken".to_string(),
-            token_id: "dlg_mcp_123".to_string(),
+            token_id: format!("dlg_mcp_{unique_id}"),
             issuer: "https://trust.example.ai".to_string(),
             agent_id: "agent:example:scheduler:v1".to_string(),
             delegator_id: "user:jake-abendroth".to_string(),
@@ -284,7 +312,7 @@ mod tests {
         let request = RequestEnvelope {
             spec_version: "0.1".to_string(),
             kind: "TrustRequestEnvelope".to_string(),
-            request_id: Some("req_mcp_123".to_string()),
+            request_id: Some(format!("req_mcp_{unique_id}")),
             profile: TrustProfile::Developer,
             agent_id: "agent:example:scheduler:v1".to_string(),
             delegator_id: "user:jake-abendroth".to_string(),
@@ -309,14 +337,19 @@ mod tests {
         request.into()
     }
 
+    fn unique_nonce(prefix: &str) -> String {
+        format!("{prefix}-{}", unique_id())
+    }
+
     #[test]
     fn allows_valid_mcp_request() {
+        let nonce = unique_nonce("nonce-mcp");
         let body = json!({
             "jsonrpc":"2.0",
             "id":"msg-1",
             "method":"tools.call",
             "params":{
-                "_trust": signed_shared_claims("nonce-mcp-1"),
+                "_trust": signed_shared_claims(&nonce),
                 "_payload":{"tool":"calendar.create_event"}
             }
         })
@@ -340,12 +373,13 @@ mod tests {
 
     #[test]
     fn blocks_nonce_replay_in_mcp_stateful_path() {
+        let replay_nonce = unique_nonce("nonce-mcp-replay");
         let body = json!({
             "jsonrpc":"2.0",
             "id":"msg-2",
             "method":"tools.call",
             "params":{
-                "_trust": signed_shared_claims("nonce-mcp-replay"),
+                "_trust": signed_shared_claims(&replay_nonce),
                 "_payload":{"tool":"calendar.create_event"}
             }
         })

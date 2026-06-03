@@ -2,7 +2,7 @@ use crate::audit::{AuditSink, JsonlFileAuditSink, write_audit_event};
 use crate::models::{AuditEvent, Decision, PolicyCheck, RequestEnvelope, Violation};
 use crate::policy::{evaluate_policy, simulate_policy};
 use crate::profiles::validate_profile_compatibility;
-use crate::revocation::{InMemoryTrustState, TrustStateStore};
+use crate::revocation::{RuntimeTrustConfig, TrustStateStore, trust_state_from_runtime_config};
 use crate::stages::{
     enforce_revocation_and_redelegation, normalize_request, validate_identity_document_lifetime,
     validate_token_binding, validate_token_lifetime, verify_signatures,
@@ -13,8 +13,16 @@ use std::io;
 use std::path::Path;
 
 pub fn evaluate_request(raw_request: &Value, now: DateTime<Utc>) -> (Decision, AuditEvent) {
-    let mut trust_state = InMemoryTrustState::new();
-    evaluate_request_with_state(raw_request, now, &mut trust_state)
+    evaluate_request_with_runtime_config(raw_request, now, &RuntimeTrustConfig::default())
+}
+
+pub fn evaluate_request_with_runtime_config(
+    raw_request: &Value,
+    now: DateTime<Utc>,
+    runtime_config: &RuntimeTrustConfig,
+) -> (Decision, AuditEvent) {
+    let mut trust_state = trust_state_from_runtime_config(runtime_config);
+    evaluate_request_with_state(raw_request, now, trust_state.as_mut())
 }
 
 pub fn evaluate_request_with_state(
@@ -60,8 +68,17 @@ pub fn evaluate_and_audit(
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
 ) -> io::Result<Decision> {
-    let mut trust_state = InMemoryTrustState::new();
-    evaluate_and_audit_with_state(raw_request, now, sink, &mut trust_state)
+    evaluate_and_audit_with_runtime_config(raw_request, now, sink, &RuntimeTrustConfig::default())
+}
+
+pub fn evaluate_and_audit_with_runtime_config(
+    raw_request: &Value,
+    now: DateTime<Utc>,
+    sink: &dyn AuditSink,
+    runtime_config: &RuntimeTrustConfig,
+) -> io::Result<Decision> {
+    let mut trust_state = trust_state_from_runtime_config(runtime_config);
+    evaluate_and_audit_with_state(raw_request, now, sink, trust_state.as_mut())
 }
 
 pub fn evaluate_and_audit_with_state(
@@ -139,6 +156,9 @@ mod tests {
     use chrono::TimeZone;
     use ed25519_dalek::SigningKey;
     use serde_json::json;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 
     fn now() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 6, 1, 20, 20, 0)
@@ -150,7 +170,17 @@ mod tests {
         SigningKey::from_bytes(&[7u8; 32])
     }
 
+    fn unique_id() -> String {
+        let counter = REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time should be after epoch")
+            .as_nanos();
+        format!("{counter}_{nanos}")
+    }
+
     fn valid_request() -> Value {
+        let unique_id = unique_id();
         let key = signing_key();
         let mut identity_document = AgentIdentityDocument {
             spec_version: "0.1".to_string(),
@@ -193,7 +223,7 @@ mod tests {
         let mut token = DelegationToken {
             spec_version: "0.1".to_string(),
             kind: "DelegationToken".to_string(),
-            token_id: "dlg_01J0EXAMPLE".to_string(),
+            token_id: format!("dlg_01J0EXAMPLE_{unique_id}"),
             issuer: "https://trust.example.ai".to_string(),
             agent_id: "agent:example:scheduler:v1".to_string(),
             delegator_id: "user:jake-abendroth".to_string(),
@@ -217,7 +247,7 @@ mod tests {
                 .single()
                 .expect("valid timestamp"),
             intent: Some("schedule_demo_and_send_confirmation".to_string()),
-            nonce: "random-nonce".to_string(),
+            nonce: format!("random-nonce-{unique_id}"),
             key_id: "key-2026-01".to_string(),
             signature_alg: TOKEN_SIGNATURE_ALG_ED25519.to_string(),
             signature: String::new(),
@@ -228,7 +258,7 @@ mod tests {
         let envelope = RequestEnvelope {
             spec_version: "0.1".to_string(),
             kind: "TrustRequestEnvelope".to_string(),
-            request_id: Some("req_123".to_string()),
+            request_id: Some(format!("req_{unique_id}")),
             profile: TrustProfile::Developer,
             agent_id: "agent:example:scheduler:v1".to_string(),
             delegator_id: "user:jake-abendroth".to_string(),
@@ -277,10 +307,14 @@ mod tests {
     #[test]
     fn allows_valid_request() {
         let (decision, event) = evaluate_request(&valid_request(), now());
-        assert!(decision.allowed);
+        assert!(decision.allowed, "unexpected deny: {}", decision.reason);
         assert_eq!(decision.stage, "evaluate_policy");
         assert_eq!(event.allowed, true);
-        assert_eq!(event.token_id.as_deref(), Some("dlg_01J0EXAMPLE"));
+        let token_id = event
+            .token_id
+            .as_deref()
+            .expect("token id should be present");
+        assert!(token_id.starts_with("dlg_01J0EXAMPLE_"));
     }
 
     #[test]
@@ -447,7 +481,11 @@ mod tests {
     fn denies_when_token_is_revoked() {
         let request = valid_request();
         let mut trust_state = InMemoryTrustState::new();
-        trust_state.revoke_token("dlg_01J0EXAMPLE");
+        let token_id = request["delegation_token"]["token_id"]
+            .as_str()
+            .expect("token_id should be present")
+            .to_string();
+        trust_state.revoke_token(token_id);
 
         let (decision, _event) = evaluate_request_with_state(&request, now(), &mut trust_state);
         assert!(!decision.allowed);
@@ -501,7 +539,29 @@ mod tests {
         let contents = std::fs::read_to_string(&path).expect("audit file should exist");
         std::fs::remove_file(&path).expect("temporary audit file should be removable");
         assert!(contents.contains("\"allowed\":true"));
-        assert!(contents.contains("\"token_id\":\"dlg_01J0EXAMPLE\""));
+        assert!(contents.contains("\"token_id\":\"dlg_01J0EXAMPLE_"));
+    }
+
+    #[test]
+    fn runtime_config_uses_durable_state_by_path() {
+        let request = valid_request();
+        let path = std::env::temp_dir().join(format!(
+            "agentauth_runtime_state_{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        ));
+        let config = crate::revocation::RuntimeTrustConfig::durable_path(path.clone());
+
+        let (first, _) = evaluate_request_with_runtime_config(&request, now(), &config);
+        let (second, _) = evaluate_request_with_runtime_config(&request, now(), &config);
+
+        assert!(first.allowed);
+        assert!(!second.allowed);
+        assert_eq!(second.stage, "enforce_revocation_and_redelegation");
+        assert_eq!(second.reason, "delegation token nonce replay detected");
+        std::fs::remove_file(&path).expect("state file should be removable");
     }
 
     #[test]

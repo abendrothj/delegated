@@ -8,6 +8,9 @@ use chrono::{TimeZone, Utc};
 use ed25519_dalek::SigningKey;
 use serde_json::Value;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 fn signing_key() -> SigningKey {
     SigningKey::from_bytes(&[23u8; 32])
@@ -17,11 +20,21 @@ fn private_key_base64url() -> String {
     Base64UrlUnpadded::encode_string(&signing_key().to_bytes())
 }
 
+fn unique_id() -> String {
+    let counter = REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("time should be after epoch")
+        .as_nanos();
+    format!("{counter}_{nanos}")
+}
+
 fn sample_token() -> DelegationToken {
+    let unique_id = unique_id();
     DelegationToken {
         spec_version: "0.1".to_string(),
         kind: "DelegationToken".to_string(),
-        token_id: "dlg_cli_123".to_string(),
+        token_id: format!("dlg_cli_{unique_id}"),
         issuer: "https://trust.example.ai".to_string(),
         agent_id: "agent:example:scheduler:v1".to_string(),
         delegator_id: "user:jake-abendroth".to_string(),
@@ -41,7 +54,7 @@ fn sample_token() -> DelegationToken {
             .single()
             .expect("valid timestamp"),
         intent: None,
-        nonce: "nonce-cli-123".to_string(),
+        nonce: format!("nonce-cli-{unique_id}"),
         key_id: "key-2026-01".to_string(),
         signature_alg: TOKEN_SIGNATURE_ALG_ED25519.to_string(),
         signature: String::new(),
@@ -49,6 +62,7 @@ fn sample_token() -> DelegationToken {
 }
 
 fn signed_request_json() -> Value {
+    let unique_id = unique_id();
     let key = signing_key();
     let mut identity_document = AgentIdentityDocument {
         spec_version: "0.1".to_string(),
@@ -94,7 +108,7 @@ fn signed_request_json() -> Value {
     let request = RequestEnvelope {
         spec_version: "0.1".to_string(),
         kind: "TrustRequestEnvelope".to_string(),
-        request_id: Some("req_cli_verify".to_string()),
+        request_id: Some(format!("req_cli_verify_{unique_id}")),
         profile: TrustProfile::Developer,
         agent_id: "agent:example:scheduler:v1".to_string(),
         delegator_id: "user:jake-abendroth".to_string(),

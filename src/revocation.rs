@@ -42,6 +42,66 @@ pub trait TrustStateAdmin: TrustStateStore {
     fn emergency_deny_agent(&mut self, agent_id: &str) -> Result<(), TrustStateError>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TrustStateBackend {
+    DurableDefault,
+    DurablePath(PathBuf),
+    InMemory,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeTrustConfig {
+    pub backend: TrustStateBackend,
+}
+
+impl RuntimeTrustConfig {
+    pub fn durable_default() -> Self {
+        Self {
+            backend: TrustStateBackend::DurableDefault,
+        }
+    }
+
+    pub fn durable_path(path: impl Into<PathBuf>) -> Self {
+        Self {
+            backend: TrustStateBackend::DurablePath(path.into()),
+        }
+    }
+
+    pub fn in_memory() -> Self {
+        Self {
+            backend: TrustStateBackend::InMemory,
+        }
+    }
+}
+
+impl Default for RuntimeTrustConfig {
+    fn default() -> Self {
+        Self::durable_default()
+    }
+}
+
+pub fn default_trust_state_path() -> PathBuf {
+    if let Some(override_path) = std::env::var_os("AGENTAUTH_TRUST_STATE_PATH") {
+        return PathBuf::from(override_path);
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        return PathBuf::from(home)
+            .join(".agentauth")
+            .join("trust-state.json");
+    }
+    PathBuf::from(".agentauth").join("trust-state.json")
+}
+
+pub fn trust_state_from_runtime_config(config: &RuntimeTrustConfig) -> Box<dyn TrustStateStore> {
+    match &config.backend {
+        TrustStateBackend::DurableDefault => {
+            Box::new(FileBackedTrustState::new(default_trust_state_path()))
+        }
+        TrustStateBackend::DurablePath(path) => Box::new(FileBackedTrustState::new(path.clone())),
+        TrustStateBackend::InMemory => Box::new(InMemoryTrustState::new()),
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct InMemoryTrustState {
     revoked_token_ids: HashSet<String>,
@@ -203,6 +263,15 @@ impl FileBackedTrustState {
 
     fn acquire_lock(&self) -> Result<FileLockGuard, TrustStateError> {
         let lock_path = self.lock_path();
+        if let Some(parent) = lock_path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|error| {
+                TrustStateError::new(format!(
+                    "failed creating trust-state lock directory: {error}"
+                ))
+            })?;
+        }
         let mut attempts = 0u8;
         loop {
             match fs::OpenOptions::new()
