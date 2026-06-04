@@ -1,3 +1,4 @@
+use crate::adapters::guard::{AdapterGuardConfig, enter_adapter_guard};
 use crate::audit::AuditSink;
 use crate::engine::evaluate_and_audit_with_state;
 use crate::models::RequestEnvelope;
@@ -45,6 +46,22 @@ pub fn handle_mcp_jsonrpc_request_with_state(
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
     trust_state: &mut dyn TrustStateStore,
+) -> McpJsonRpcResponse {
+    handle_mcp_jsonrpc_request_with_state_and_guard_config(
+        raw_body,
+        now,
+        sink,
+        trust_state,
+        &AdapterGuardConfig::default(),
+    )
+}
+
+pub fn handle_mcp_jsonrpc_request_with_state_and_guard_config(
+    raw_body: &str,
+    now: DateTime<Utc>,
+    sink: &dyn AuditSink,
+    trust_state: &mut dyn TrustStateStore,
+    guard_config: &AdapterGuardConfig,
 ) -> McpJsonRpcResponse {
     let raw_request: Value = match serde_json::from_str(raw_body) {
         Ok(value) => value,
@@ -96,6 +113,18 @@ pub fn handle_mcp_jsonrpc_request_with_state(
         Ok(claims) => claims,
         Err(error_response) => return error_response.with_id(id),
     };
+    let _guard_lease =
+        match enter_adapter_guard(&claims.agent_id, &claims.delegator_id, now, guard_config) {
+            Ok(lease) => lease,
+            Err(violation) => {
+                return jsonrpc_error(
+                    id,
+                    -32029,
+                    "adapter throttled request".to_string(),
+                    Some(json!({"stage":"adapter_guard","reason":violation.reason})),
+                );
+            }
+        };
     let envelope: RequestEnvelope = claims.into();
     let raw_envelope = match serde_json::to_value(envelope) {
         Ok(value) => value,
@@ -209,6 +238,7 @@ fn jsonrpc_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::adapters::guard::AdapterGuardConfig;
     use crate::audit::JsonlFileAuditSink;
     use crate::crypto::{
         TOKEN_SIGNATURE_ALG_ED25519, sign_delegation_token, sign_identity_document,
@@ -240,7 +270,7 @@ mod tests {
         format!("{counter}_{nanos}")
     }
 
-    fn signed_shared_claims(nonce: &str) -> SharedTrustClaims {
+    fn signed_shared_claims_for_actor(nonce: &str, delegator_id: &str) -> SharedTrustClaims {
         let unique_id = unique_id();
         let key = SigningKey::from_bytes(&[12u8; 32]);
         let mut identity = AgentIdentityDocument {
@@ -286,7 +316,7 @@ mod tests {
             token_id: format!("dlg_mcp_{unique_id}"),
             issuer: "https://trust.example.ai".to_string(),
             agent_id: "agent:example:scheduler:v1".to_string(),
-            delegator_id: "user:jake-abendroth".to_string(),
+            delegator_id: delegator_id.to_string(),
             owner_id: "org:example".to_string(),
             audience: vec!["tool:google-calendar".to_string()],
             allowed_actions: vec!["calendar.create_event".to_string()],
@@ -315,7 +345,7 @@ mod tests {
             request_id: Some(format!("req_mcp_{unique_id}")),
             profile: TrustProfile::Developer,
             agent_id: "agent:example:scheduler:v1".to_string(),
-            delegator_id: "user:jake-abendroth".to_string(),
+            delegator_id: delegator_id.to_string(),
             audience: "tool:google-calendar".to_string(),
             action: "calendar.create_event".to_string(),
             resource: None,
@@ -335,6 +365,10 @@ mod tests {
             token,
         };
         request.into()
+    }
+
+    fn signed_shared_claims(nonce: &str) -> SharedTrustClaims {
+        signed_shared_claims_for_actor(nonce, "user:jake-abendroth")
     }
 
     fn unique_nonce(prefix: &str) -> String {
@@ -404,6 +438,84 @@ mod tests {
                 .and_then(|e| e.get("data"))
                 .and_then(|d| d.get("reason")),
             Some(&json!("delegation token nonce replay detected"))
+        );
+        std::fs::remove_file(sink_path).expect("temporary audit file should be removable");
+    }
+
+    #[test]
+    fn returns_jsonrpc_rate_limit_error_when_throttled() {
+        let delegator = format!(
+            "user:mcp-rate-limit:{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        );
+        let config = AdapterGuardConfig {
+            max_requests_per_minute: 1,
+            max_inflight_per_tuple: 4,
+        };
+        let first_nonce = unique_nonce("nonce-mcp-rate-one");
+        let second_nonce = unique_nonce("nonce-mcp-rate-two");
+        let first_body = json!({
+            "jsonrpc":"2.0",
+            "id":"msg-rate-1",
+            "method":"tools.call",
+            "params":{
+                "_trust": signed_shared_claims_for_actor(&first_nonce, &delegator),
+                "_payload":{"tool":"calendar.create_event"}
+            }
+        })
+        .to_string();
+        let second_body = json!({
+            "jsonrpc":"2.0",
+            "id":"msg-rate-2",
+            "method":"tools.call",
+            "params":{
+                "_trust": signed_shared_claims_for_actor(&second_nonce, &delegator),
+                "_payload":{"tool":"calendar.create_event"}
+            }
+        })
+        .to_string();
+        let sink_path = std::env::temp_dir().join(format!(
+            "agentauth_mcp_rate_{}.jsonl",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        ));
+        let sink = JsonlFileAuditSink::new(sink_path.clone());
+        let mut state = InMemoryTrustState::new();
+        let first = handle_mcp_jsonrpc_request_with_state_and_guard_config(
+            &first_body,
+            now(),
+            &sink,
+            &mut state,
+            &config,
+        );
+        let second = handle_mcp_jsonrpc_request_with_state_and_guard_config(
+            &second_body,
+            now(),
+            &sink,
+            &mut state,
+            &config,
+        );
+        assert!(first.error.is_none());
+        assert_eq!(
+            second
+                .error
+                .as_ref()
+                .and_then(|e| e.get("code"))
+                .and_then(|c| c.as_i64()),
+            Some(-32029)
+        );
+        assert_eq!(
+            second
+                .error
+                .as_ref()
+                .and_then(|e| e.get("data"))
+                .and_then(|d| d.get("reason")),
+            Some(&json!("rate limit exceeded for agent/delegator tuple"))
         );
         std::fs::remove_file(sink_path).expect("temporary audit file should be removable");
     }

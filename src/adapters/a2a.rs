@@ -1,3 +1,4 @@
+use crate::adapters::guard::{AdapterGuardConfig, enter_adapter_guard};
 use crate::audit::AuditSink;
 use crate::engine::evaluate_and_audit_with_state;
 use crate::models::RequestEnvelope;
@@ -48,6 +49,22 @@ pub fn handle_a2a_request_with_state(
     sink: &dyn AuditSink,
     trust_state: &mut dyn TrustStateStore,
 ) -> A2aProtocolResponse {
+    handle_a2a_request_with_state_and_guard_config(
+        raw_body,
+        now,
+        sink,
+        trust_state,
+        &AdapterGuardConfig::default(),
+    )
+}
+
+pub fn handle_a2a_request_with_state_and_guard_config(
+    raw_body: &str,
+    now: DateTime<Utc>,
+    sink: &dyn AuditSink,
+    trust_state: &mut dyn TrustStateStore,
+    guard_config: &AdapterGuardConfig,
+) -> A2aProtocolResponse {
     let request: A2aProtocolRequest = match serde_json::from_str(raw_body) {
         Ok(value) => value,
         Err(error) => {
@@ -71,6 +88,25 @@ pub fn handle_a2a_request_with_state(
             ),
         };
     }
+    let _guard_lease = match enter_adapter_guard(
+        &request.trust_claims.agent_id,
+        &request.trust_claims.delegator_id,
+        now,
+        guard_config,
+    ) {
+        Ok(lease) => lease,
+        Err(violation) => {
+            return A2aProtocolResponse {
+                message_id: request.message_id,
+                status: "denied".to_string(),
+                result: None,
+                error: Some(json!({
+                    "stage":"adapter_guard",
+                    "reason": violation.reason
+                })),
+            };
+        }
+    };
     let envelope: RequestEnvelope = request.trust_claims.into();
     let raw_envelope = match serde_json::to_value(envelope) {
         Ok(value) => value,
@@ -120,6 +156,7 @@ pub fn handle_a2a_request_with_state(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::adapters::guard::AdapterGuardConfig;
     use crate::audit::JsonlFileAuditSink;
     use crate::crypto::{
         TOKEN_SIGNATURE_ALG_ED25519, sign_delegation_token, sign_identity_document,
@@ -151,7 +188,7 @@ mod tests {
         format!("{counter}_{nanos}")
     }
 
-    fn claims(nonce: &str) -> SharedTrustClaims {
+    fn claims_for_actor(nonce: &str, delegator_id: &str) -> SharedTrustClaims {
         let unique_id = unique_id();
         let key = SigningKey::from_bytes(&[13u8; 32]);
         let mut identity = AgentIdentityDocument {
@@ -197,7 +234,7 @@ mod tests {
             token_id: format!("dlg_a2a_{unique_id}"),
             issuer: "https://trust.example.ai".to_string(),
             agent_id: "agent:example:scheduler:v1".to_string(),
-            delegator_id: "user:jake-abendroth".to_string(),
+            delegator_id: delegator_id.to_string(),
             owner_id: "org:example".to_string(),
             audience: vec!["tool:google-calendar".to_string()],
             allowed_actions: vec!["calendar.create_event".to_string()],
@@ -226,7 +263,7 @@ mod tests {
             request_id: Some(format!("req_a2a_{unique_id}")),
             profile: TrustProfile::Developer,
             agent_id: "agent:example:scheduler:v1".to_string(),
-            delegator_id: "user:jake-abendroth".to_string(),
+            delegator_id: delegator_id.to_string(),
             audience: "tool:google-calendar".to_string(),
             action: "calendar.create_event".to_string(),
             resource: None,
@@ -246,6 +283,10 @@ mod tests {
             token,
         };
         request.into()
+    }
+
+    fn claims(nonce: &str) -> SharedTrustClaims {
+        claims_for_actor(nonce, "user:jake-abendroth")
     }
 
     fn unique_nonce(prefix: &str) -> String {
@@ -306,6 +347,65 @@ mod tests {
         assert_eq!(
             second.error.as_ref().and_then(|e| e.get("reason")),
             Some(&json!("delegation token nonce replay detected"))
+        );
+        std::fs::remove_file(sink_path).expect("temporary audit file should be removable");
+    }
+
+    #[test]
+    fn returns_denied_rate_limit_error_when_throttled() {
+        let delegator = format!(
+            "user:a2a-rate-limit:{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        );
+        let config = AdapterGuardConfig {
+            max_requests_per_minute: 1,
+            max_inflight_per_tuple: 4,
+        };
+        let first_req = A2aProtocolRequest {
+            message_id: "msg-a2a-rate-1".to_string(),
+            protocol_version: "2026-06-01".to_string(),
+            message_type: "task.request".to_string(),
+            trust_claims: claims_for_actor(&unique_nonce("nonce-a2a-rate-one"), &delegator),
+            payload: json!({"task":"schedule"}),
+        };
+        let second_req = A2aProtocolRequest {
+            message_id: "msg-a2a-rate-2".to_string(),
+            protocol_version: "2026-06-01".to_string(),
+            message_type: "task.request".to_string(),
+            trust_claims: claims_for_actor(&unique_nonce("nonce-a2a-rate-two"), &delegator),
+            payload: json!({"task":"schedule"}),
+        };
+        let sink_path = std::env::temp_dir().join(format!(
+            "agentauth_a2a_rate_{}.jsonl",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        ));
+        let sink = JsonlFileAuditSink::new(sink_path.clone());
+        let mut state = InMemoryTrustState::new();
+        let first = handle_a2a_request_with_state_and_guard_config(
+            &serde_json::to_string(&first_req).expect("serialization should work"),
+            now(),
+            &sink,
+            &mut state,
+            &config,
+        );
+        let second = handle_a2a_request_with_state_and_guard_config(
+            &serde_json::to_string(&second_req).expect("serialization should work"),
+            now(),
+            &sink,
+            &mut state,
+            &config,
+        );
+        assert_eq!(first.status, "ok");
+        assert_eq!(second.status, "denied");
+        assert_eq!(
+            second.error.as_ref().and_then(|e| e.get("reason")),
+            Some(&json!("rate limit exceeded for agent/delegator tuple"))
         );
         std::fs::remove_file(sink_path).expect("temporary audit file should be removable");
     }

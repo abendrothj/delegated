@@ -76,7 +76,7 @@ fn signed_request(
         token_id: format!("dlg_{nonce}"),
         issuer: "https://trust.example.ai".to_string(),
         agent_id: "agent:example:scheduler:v1".to_string(),
-        delegator_id: "user:jake-abendroth".to_string(),
+        delegator_id: format!("user:jake-abendroth:{nonce}"),
         owner_id: "org:example".to_string(),
         audience: vec!["tool:google-calendar".to_string()],
         allowed_actions: vec!["calendar.create_event".to_string()],
@@ -106,7 +106,7 @@ fn signed_request(
         request_id: Some(format!("req_{nonce}")),
         profile,
         agent_id: "agent:example:scheduler:v1".to_string(),
-        delegator_id: "user:jake-abendroth".to_string(),
+        delegator_id: format!("user:jake-abendroth:{nonce}"),
         audience: "tool:google-calendar".to_string(),
         action: "calendar.create_event".to_string(),
         resource: None,
@@ -148,7 +148,7 @@ fn run_across_adapters(envelope: RequestEnvelope) -> (u16, Option<serde_json::Va
     let http = handle_http_json_request_with_state(&http_body, now(), &sink, &mut http_state);
     let mcp = handle_mcp_jsonrpc_request_with_state(&mcp_body, now(), &sink, &mut mcp_state);
     let a2a = handle_a2a_request_with_state(&a2a_body, now(), &sink, &mut a2a_state);
-    std::fs::remove_file(sink_path).expect("temporary audit file should be removable");
+    let _ = std::fs::remove_file(sink_path);
     (http.status_code, mcp.error, a2a.status)
 }
 

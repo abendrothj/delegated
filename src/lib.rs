@@ -16,14 +16,18 @@ pub mod wire;
 pub use adapters::a2a::{
     A2aProtocolRequest, A2aProtocolResponse, handle_a2a_request,
     handle_a2a_request_with_runtime_config, handle_a2a_request_with_state,
+    handle_a2a_request_with_state_and_guard_config,
+};
+pub use adapters::guard::{
+    AdapterGuardConfig, AdapterGuardLease, AdapterGuardViolation, enter_adapter_guard,
 };
 pub use adapters::http::{
     HttpAdapterResponse, handle_http_json_request, handle_http_json_request_with_runtime_config,
-    handle_http_json_request_with_state,
+    handle_http_json_request_with_state, handle_http_json_request_with_state_and_guard_config,
 };
 pub use adapters::mcp::{
     McpJsonRpcResponse, handle_mcp_jsonrpc_request, handle_mcp_jsonrpc_request_with_runtime_config,
-    handle_mcp_jsonrpc_request_with_state,
+    handle_mcp_jsonrpc_request_with_state, handle_mcp_jsonrpc_request_with_state_and_guard_config,
 };
 pub use audit::{AuditQuery, AuditReader, AuditSink, JsonlFileAuditSink};
 pub use control_plane::{

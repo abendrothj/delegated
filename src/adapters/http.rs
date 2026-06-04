@@ -1,3 +1,4 @@
+use crate::adapters::guard::{AdapterGuardConfig, enter_adapter_guard};
 use crate::audit::AuditSink;
 use crate::engine::evaluate_and_audit_with_state;
 use crate::revocation::{RuntimeTrustConfig, TrustStateStore, trust_state_from_runtime_config};
@@ -40,6 +41,22 @@ pub fn handle_http_json_request_with_state(
     sink: &dyn AuditSink,
     trust_state: &mut dyn TrustStateStore,
 ) -> HttpAdapterResponse {
+    handle_http_json_request_with_state_and_guard_config(
+        raw_body,
+        now,
+        sink,
+        trust_state,
+        &AdapterGuardConfig::default(),
+    )
+}
+
+pub fn handle_http_json_request_with_state_and_guard_config(
+    raw_body: &str,
+    now: DateTime<Utc>,
+    sink: &dyn AuditSink,
+    trust_state: &mut dyn TrustStateStore,
+    guard_config: &AdapterGuardConfig,
+) -> HttpAdapterResponse {
     let raw_request: Value = match serde_json::from_str(raw_body) {
         Ok(value) => value,
         Err(error) => {
@@ -49,6 +66,28 @@ pub fn handle_http_json_request_with_state(
                     "allowed": false,
                     "stage": "http_adapter",
                     "reason": format!("malformed JSON body: {error}")
+                }),
+            };
+        }
+    };
+
+    let agent_id = raw_request
+        .get("agent_id")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown-agent");
+    let delegator_id = raw_request
+        .get("delegator_id")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown-delegator");
+    let _guard_lease = match enter_adapter_guard(agent_id, delegator_id, now, guard_config) {
+        Ok(lease) => lease,
+        Err(violation) => {
+            return HttpAdapterResponse {
+                status_code: 429,
+                body: json!({
+                    "allowed": false,
+                    "stage": "adapter_guard",
+                    "reason": violation.reason
                 }),
             };
         }
@@ -90,6 +129,7 @@ pub fn handle_http_json_request_with_state(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::adapters::guard::AdapterGuardConfig;
     use crate::audit::{AuditSink, JsonlFileAuditSink};
     use crate::crypto::{
         TOKEN_SIGNATURE_ALG_ED25519, sign_delegation_token, sign_identity_document,
@@ -103,7 +143,9 @@ mod tests {
     use chrono::TimeZone;
     use ed25519_dalek::SigningKey;
     use std::io;
+    use std::sync::Arc;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Duration;
 
     static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -226,6 +268,24 @@ mod tests {
         serde_json::to_string(&request).expect("request serialization should work")
     }
 
+    fn resign_token(request: &mut Value) {
+        let key = signing_key();
+        let mut token: DelegationToken =
+            serde_json::from_value(request["delegation_token"].clone())
+                .expect("token should parse");
+        token.signature = sign_delegation_token(&token, &key).expect("token resign should work");
+        request["delegation_token"] = serde_json::to_value(token).expect("token serialization");
+    }
+
+    fn request_with_delegator(delegator_id: &str) -> String {
+        let mut request: Value =
+            serde_json::from_str(&valid_request_body()).expect("test request should parse");
+        request["delegator_id"] = json!(delegator_id);
+        request["delegation_token"]["delegator_id"] = json!(delegator_id);
+        resign_token(&mut request);
+        request.to_string()
+    }
+
     #[test]
     fn returns_200_on_allow() {
         let path = std::env::temp_dir().join(format!(
@@ -303,11 +363,117 @@ mod tests {
         std::fs::remove_file(path).expect("temporary audit file should be removable");
     }
 
+    #[test]
+    fn returns_429_when_rate_limited_by_tuple() {
+        let path = std::env::temp_dir().join(format!(
+            "agentauth_http_rate_limit_{}.jsonl",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        ));
+        let sink = JsonlFileAuditSink::new(path.clone());
+        let config = AdapterGuardConfig {
+            max_requests_per_minute: 1,
+            max_inflight_per_tuple: 8,
+        };
+        let delegator = format!(
+            "user:rate-limit:{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        );
+        let first_body = request_with_delegator(&delegator);
+        let second_body = request_with_delegator(&delegator);
+        let mut state = InMemoryTrustState::new();
+        let first = handle_http_json_request_with_state_and_guard_config(
+            &first_body,
+            now(),
+            &sink,
+            &mut state,
+            &config,
+        );
+        let second = handle_http_json_request_with_state_and_guard_config(
+            &second_body,
+            now(),
+            &sink,
+            &mut state,
+            &config,
+        );
+        assert_eq!(first.status_code, 200);
+        assert_eq!(second.status_code, 429);
+        assert_eq!(
+            second.body["reason"],
+            json!("rate limit exceeded for agent/delegator tuple")
+        );
+        std::fs::remove_file(path).expect("temporary audit file should be removable");
+    }
+
+    #[test]
+    fn returns_429_when_concurrency_limited_by_tuple() {
+        let config = AdapterGuardConfig {
+            max_requests_per_minute: 100,
+            max_inflight_per_tuple: 1,
+        };
+        let delegator = format!(
+            "user:inflight-limit:{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        );
+        let first_body = request_with_delegator(&delegator);
+        let second_body = request_with_delegator(&delegator);
+        let sink = Arc::new(SlowSink { delay_ms: 200 });
+
+        let sink_first = Arc::clone(&sink);
+        let config_first = config.clone();
+        let first = std::thread::spawn(move || {
+            let mut state = InMemoryTrustState::new();
+            handle_http_json_request_with_state_and_guard_config(
+                &first_body,
+                now(),
+                sink_first.as_ref(),
+                &mut state,
+                &config_first,
+            )
+        });
+        std::thread::sleep(Duration::from_millis(20));
+
+        let mut second_state = InMemoryTrustState::new();
+        let second = handle_http_json_request_with_state_and_guard_config(
+            &second_body,
+            now(),
+            sink.as_ref(),
+            &mut second_state,
+            &config,
+        );
+        let first_response = first.join().expect("first request thread should finish");
+        assert_eq!(first_response.status_code, 200);
+        assert_eq!(second.status_code, 429);
+        assert_eq!(
+            second.body["reason"],
+            json!("concurrency limit exceeded for agent/delegator tuple")
+        );
+    }
+
     struct FailingSink;
 
     impl AuditSink for FailingSink {
         fn write_event(&self, _event: &AuditEvent) -> io::Result<()> {
             Err(io::Error::other("sink unavailable"))
+        }
+    }
+
+    struct SlowSink {
+        delay_ms: u64,
+    }
+
+    impl AuditSink for SlowSink {
+        fn write_event(&self, _event: &AuditEvent) -> io::Result<()> {
+            std::thread::sleep(Duration::from_millis(self.delay_ms));
+            Ok(())
         }
     }
 }
