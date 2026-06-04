@@ -220,9 +220,9 @@ fn revoke_token_command(
     reason: Option<String>,
     output_path: Option<&str>,
 ) -> Result<(), Box<dyn Error>> {
-    let mut trust_state = FileBackedTrustState::new(default_trust_state_path());
+    let trust_state = FileBackedTrustState::new(default_trust_state_path());
     let operation = revoke_token_with_receipt(
-        &mut trust_state,
+        &trust_state,
         request_id.to_string(),
         token_id.to_string(),
         actor_id.to_string(),

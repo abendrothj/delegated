@@ -8,7 +8,7 @@ use crate::models::{
 };
 use base64ct::{Base64UrlUnpadded, Encoding};
 use chrono::{DateTime, Duration, Utc};
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static ISSUANCE_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -317,6 +317,7 @@ pub struct AgentIdentityDocumentBuilder {
     identity_type: Option<String>,
     subject: Option<String>,
     key_id: Option<String>,
+    additional_public_keys: Vec<PublicKeyRecord>,
     supported_protocols: Vec<String>,
     supported_auth_methods: Vec<String>,
     capabilities: Option<Vec<String>>,
@@ -363,6 +364,23 @@ impl AgentIdentityDocumentBuilder {
 
     pub fn key_id(mut self, key_id: impl Into<String>) -> Self {
         self.key_id = Some(key_id.into());
+        self
+    }
+
+    /// Register an additional public key for key rotation. The primary signing
+    /// key is always included; call this for each extra key that should appear
+    /// in `public_keys` so clients can verify tokens signed by any active key.
+    pub fn additional_public_key(
+        mut self,
+        kid: impl Into<String>,
+        key: &VerifyingKey,
+    ) -> Self {
+        self.additional_public_keys.push(PublicKeyRecord {
+            kid: kid.into(),
+            kty: "OKP".to_string(),
+            crv: Some(TOKEN_SIGNATURE_ALG_ED25519.to_string()),
+            x: Some(Base64UrlUnpadded::encode_string(&key.to_bytes())),
+        });
         self
     }
 
@@ -440,12 +458,13 @@ impl AgentIdentityDocumentBuilder {
         }
 
         let verifying_bytes = signing_key.verifying_key().to_bytes();
-        let public_keys = vec![PublicKeyRecord {
+        let mut public_keys = vec![PublicKeyRecord {
             kid: key_id,
             kty: "OKP".to_string(),
             crv: Some(TOKEN_SIGNATURE_ALG_ED25519.to_string()),
             x: Some(Base64UrlUnpadded::encode_string(&verifying_bytes)),
         }];
+        public_keys.extend(self.additional_public_keys);
 
         let mut doc = AgentIdentityDocument {
             spec_version: SPEC_VERSION_CURRENT.to_string(),
@@ -694,6 +713,29 @@ mod tests {
     }
 
     #[test]
+    fn builder_supports_multiple_public_keys_for_rotation() {
+        let primary_key = key();
+        let rotation_key = SigningKey::from_bytes(&[77u8; 32]);
+        let doc = AgentIdentityDocumentBuilder::new()
+            .agent_id("agent:example:scheduler:v1")
+            .owner_id("org:example")
+            .issuer("https://trust.example.ai")
+            .identity_type("spiffe")
+            .subject("spiffe://example.ai/agents/scheduler")
+            .key_id("key-2026-01")
+            .additional_public_key("key-2026-02", &rotation_key.verifying_key())
+            .supported_protocol("http")
+            .supported_auth_method("delegation_token")
+            .endpoint("http", "https://agents.example.ai/scheduler")
+            .build_and_sign(&primary_key)
+            .expect("document build should succeed");
+
+        assert_eq!(doc.public_keys.len(), 2);
+        assert_eq!(doc.public_keys[0].kid, "key-2026-01");
+        assert_eq!(doc.public_keys[1].kid, "key-2026-02");
+    }
+
+    #[test]
     fn full_issuance_pipeline_produces_evaluatable_request() {
         let k = key();
         let doc = AgentIdentityDocumentBuilder::new()
@@ -730,8 +772,8 @@ mod tests {
             .expect("envelope build should succeed");
 
         let raw = serde_json::to_value(envelope).expect("serialization should succeed");
-        let mut state = InMemoryTrustState::new();
-        let (decision, _) = evaluate_request_with_state(&raw, now(), &mut state, &crate::models::HostContext::default());
+        let state = InMemoryTrustState::new();
+        let (decision, _) = evaluate_request_with_state(&raw, now(), &state, &crate::models::HostContext::default());
         assert!(decision.allowed, "unexpected deny: {}", decision.reason);
     }
 }

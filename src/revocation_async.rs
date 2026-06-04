@@ -1,13 +1,12 @@
 use crate::revocation::{InMemoryTrustState, TrustStateAdmin, TrustStateError, TrustStateStore};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use std::sync::Mutex;
 
 /// Async counterpart to [`TrustStateStore`]. Implement against Redis, PostgreSQL,
 /// DynamoDB, or any shared store.
 ///
-/// Note: `consume_nonce` takes `&self` (not `&mut self`) because async implementations
-/// must use interior mutability (e.g. `Mutex`, `DashMap`, or a database transaction).
+/// All methods take `&self` — implementations must use interior mutability
+/// (e.g. `Mutex`, `DashMap`, or a database transaction).
 #[async_trait]
 pub trait AsyncTrustStateStore: Send + Sync {
     async fn is_token_revoked(&self, token_id: &str) -> Result<bool, TrustStateError>;
@@ -19,27 +18,51 @@ pub trait AsyncTrustStateStore: Send + Sync {
     ) -> Result<bool, TrustStateError>;
 }
 
-/// Async admin operations. Implementations must use interior mutability.
+/// Async admin operations.
+///
+/// Default implementations are provided for `revoke_tokens` (loops over
+/// `revoke_token`) and `flush_expired_nonces` (no-op, suitable for backends
+/// that handle expiry externally, e.g. Redis `EXAT`).
 #[async_trait]
 pub trait AsyncTrustStateAdmin: AsyncTrustStateStore {
     async fn revoke_token(&self, token_id: &str) -> Result<(), TrustStateError>;
     async fn emergency_deny_agent(&self, agent_id: &str) -> Result<(), TrustStateError>;
+    /// Clear all entries from the emergency deny list. Returns count removed.
+    async fn clear_emergency_deny_list(&self) -> Result<u64, TrustStateError>;
+
+    /// Revoke multiple tokens. Returns the count revoked.
+    async fn revoke_tokens(&self, token_ids: &[&str]) -> Result<u64, TrustStateError> {
+        let mut count = 0u64;
+        for id in token_ids {
+            self.revoke_token(id).await?;
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    /// Flush consumed nonces that have expired as of `reference_time`.
+    /// The default is a no-op for backends that handle expiry externally.
+    async fn flush_expired_nonces(
+        &self,
+        _reference_time: DateTime<Utc>,
+    ) -> Result<u64, TrustStateError> {
+        Ok(0)
+    }
 }
 
-/// In-memory async trust state backed by `Mutex<InMemoryTrustState>`.
+/// In-memory async trust state.
 ///
-/// Suitable for tests and single-process deployments. For multi-process or
-/// high-throughput production use, implement [`AsyncTrustStateStore`] against a
-/// shared store (Redis, PostgreSQL, etc.).
+/// Wraps [`InMemoryTrustState`], which already uses interior mutability, so no
+/// additional locking is required. Suitable for tests and single-process
+/// deployments. For multi-process or high-throughput production use, implement
+/// [`AsyncTrustStateStore`] against a shared store (Redis, PostgreSQL, etc.).
 pub struct InMemoryAsyncTrustState {
-    inner: Mutex<InMemoryTrustState>,
+    inner: InMemoryTrustState,
 }
 
 impl InMemoryAsyncTrustState {
     pub fn new() -> Self {
-        Self {
-            inner: Mutex::new(InMemoryTrustState::new()),
-        }
+        Self { inner: InMemoryTrustState::new() }
     }
 }
 
@@ -52,19 +75,11 @@ impl Default for InMemoryAsyncTrustState {
 #[async_trait]
 impl AsyncTrustStateStore for InMemoryAsyncTrustState {
     async fn is_token_revoked(&self, token_id: &str) -> Result<bool, TrustStateError> {
-        let inner = self
-            .inner
-            .lock()
-            .map_err(|_| TrustStateError::new("async trust state mutex poisoned"))?;
-        TrustStateStore::is_token_revoked(&*inner, token_id)
+        TrustStateStore::is_token_revoked(&self.inner, token_id)
     }
 
     async fn is_agent_emergency_denied(&self, agent_id: &str) -> Result<bool, TrustStateError> {
-        let inner = self
-            .inner
-            .lock()
-            .map_err(|_| TrustStateError::new("async trust state mutex poisoned"))?;
-        TrustStateStore::is_agent_emergency_denied(&*inner, agent_id)
+        TrustStateStore::is_agent_emergency_denied(&self.inner, agent_id)
     }
 
     async fn consume_nonce(
@@ -72,30 +87,29 @@ impl AsyncTrustStateStore for InMemoryAsyncTrustState {
         nonce: &str,
         valid_until: DateTime<Utc>,
     ) -> Result<bool, TrustStateError> {
-        let mut inner = self
-            .inner
-            .lock()
-            .map_err(|_| TrustStateError::new("async trust state mutex poisoned"))?;
-        TrustStateStore::consume_nonce(&mut *inner, nonce, valid_until)
+        TrustStateStore::consume_nonce(&self.inner, nonce, valid_until)
     }
 }
 
 #[async_trait]
 impl AsyncTrustStateAdmin for InMemoryAsyncTrustState {
     async fn revoke_token(&self, token_id: &str) -> Result<(), TrustStateError> {
-        let mut inner = self
-            .inner
-            .lock()
-            .map_err(|_| TrustStateError::new("async trust state mutex poisoned"))?;
-        TrustStateAdmin::revoke_token(&mut *inner, token_id)
+        TrustStateAdmin::revoke_token(&self.inner, token_id)
     }
 
     async fn emergency_deny_agent(&self, agent_id: &str) -> Result<(), TrustStateError> {
-        let mut inner = self
-            .inner
-            .lock()
-            .map_err(|_| TrustStateError::new("async trust state mutex poisoned"))?;
-        TrustStateAdmin::emergency_deny_agent(&mut *inner, agent_id)
+        TrustStateAdmin::emergency_deny_agent(&self.inner, agent_id)
+    }
+
+    async fn clear_emergency_deny_list(&self) -> Result<u64, TrustStateError> {
+        TrustStateAdmin::clear_emergency_deny_list(&self.inner)
+    }
+
+    async fn flush_expired_nonces(
+        &self,
+        reference_time: DateTime<Utc>,
+    ) -> Result<u64, TrustStateError> {
+        TrustStateAdmin::flush_expired_nonces(&self.inner, reference_time)
     }
 }
 
@@ -167,5 +181,21 @@ mod tests {
                 .await
                 .expect("query should succeed")
         );
+    }
+
+    #[tokio::test]
+    async fn async_bulk_revoke_and_clear_emergency_list() {
+        let state = InMemoryAsyncTrustState::new();
+        let ids = ["dlg_x", "dlg_y"];
+        let count = state.revoke_tokens(&ids).await.expect("bulk revoke should succeed");
+        assert_eq!(count, 2);
+        for id in &ids {
+            assert!(state.is_token_revoked(id).await.expect("query should succeed"));
+        }
+
+        state.emergency_deny_agent("agent:bad").await.expect("deny should succeed");
+        let cleared = state.clear_emergency_deny_list().await.expect("clear should succeed");
+        assert_eq!(cleared, 1);
+        assert!(!state.is_agent_emergency_denied("agent:bad").await.expect("query should succeed"));
     }
 }

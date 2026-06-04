@@ -49,7 +49,7 @@ pub fn record_approval_decision(
 }
 
 pub fn revoke_token_with_receipt(
-    trust_state: &mut dyn TrustStateAdmin,
+    trust_state: &dyn TrustStateAdmin,
     request_id: impl Into<String>,
     token_id: String,
     actor_id: impl Into<String>,
@@ -64,7 +64,7 @@ pub fn revoke_token_with_receipt(
 }
 
 pub fn emergency_deny_agent(
-    trust_state: &mut dyn TrustStateAdmin,
+    trust_state: &dyn TrustStateAdmin,
     agent_id: impl Into<String>,
 ) -> Result<(), Violation> {
     let agent_id = agent_id.into();
@@ -158,13 +158,13 @@ mod tests {
 
     #[test]
     fn revokes_token_with_receipt() {
-        let mut state = InMemoryTrustState::new();
+        let state = InMemoryTrustState::new();
         let now = Utc
             .with_ymd_and_hms(2026, 6, 1, 20, 25, 0)
             .single()
             .expect("valid timestamp");
         let operation = revoke_token_with_receipt(
-            &mut state,
+            &state,
             "req_cp_123",
             "dlg_1".to_string(),
             "user:jake-abendroth",

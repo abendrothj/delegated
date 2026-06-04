@@ -5,8 +5,9 @@ use delegated::models::{
     TrustProfile,
 };
 use delegated::{
-    InMemoryTrustState, JsonlFileAuditSink, RequestEnvelope, TOKEN_SIGNATURE_ALG_ED25519,
-    handle_http_json_request_with_state, sign_delegation_token, sign_identity_document,
+    InMemoryTrustState, JsonlFileAuditSink, RequestEnvelope, TrustStateAdmin,
+    TOKEN_SIGNATURE_ALG_ED25519, handle_http_json_request_with_state,
+    sign_delegation_token, sign_identity_document,
 };
 use ed25519_dalek::SigningKey;
 use serde_json::{Value, json};
@@ -174,18 +175,18 @@ fn denies_revoked_token_end_to_end() {
             .as_nanos()
     ));
     let sink = JsonlFileAuditSink::new(path.clone());
-    let mut state = InMemoryTrustState::new();
+    let state = InMemoryTrustState::new();
     let request = signed_request_value("req_conf_revoke", "nonce-revoke");
     let token_id = request["delegation_token"]["token_id"]
         .as_str()
         .expect("token_id must be present");
-    state.revoke_token(token_id.to_string());
+    state.revoke_token(token_id).expect("revoke should succeed");
 
     let response = handle_http_json_request_with_state(
         &request.to_string(),
         now(),
         &sink,
-        &mut state,
+        &state,
         &delegated::HostContext::default(),
     );
     assert_eq!(response.status_code, 403);
@@ -207,21 +208,21 @@ fn denies_nonce_replay_end_to_end() {
             .as_nanos()
     ));
     let sink = JsonlFileAuditSink::new(path.clone());
-    let mut state = InMemoryTrustState::new();
+    let state = InMemoryTrustState::new();
     let body = signed_request_value("req_conf_replay", "nonce-replay").to_string();
 
     let first = handle_http_json_request_with_state(
         &body,
         now(),
         &sink,
-        &mut state,
+        &state,
         &delegated::HostContext::default(),
     );
     let second = handle_http_json_request_with_state(
         &body,
         now(),
         &sink,
-        &mut state,
+        &state,
         &delegated::HostContext::default(),
     );
 
@@ -245,7 +246,7 @@ fn writes_allow_and_deny_audit_events_end_to_end() {
             .as_nanos()
     ));
     let sink = JsonlFileAuditSink::new(path.clone());
-    let mut state = InMemoryTrustState::new();
+    let state = InMemoryTrustState::new();
 
     let allow_body = signed_request_value("req_conf_audit_allow", "nonce-audit-allow").to_string();
     let mut deny_body_value = signed_request_value("req_conf_audit_deny", "nonce-audit-deny");
@@ -255,14 +256,14 @@ fn writes_allow_and_deny_audit_events_end_to_end() {
         &allow_body,
         now(),
         &sink,
-        &mut state,
+        &state,
         &delegated::HostContext::default(),
     );
     let deny = handle_http_json_request_with_state(
         &deny_body_value.to_string(),
         now(),
         &sink,
-        &mut state,
+        &state,
         &delegated::HostContext::default(),
     );
 

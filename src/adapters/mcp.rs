@@ -37,12 +37,12 @@ pub fn handle_mcp_jsonrpc_request_with_runtime_config(
     sink: &dyn AuditSink,
     runtime_config: &RuntimeTrustConfig,
 ) -> McpJsonRpcResponse {
-    let mut trust_state = trust_state_from_runtime_config(runtime_config);
+    let trust_state = trust_state_from_runtime_config(runtime_config);
     handle_mcp_jsonrpc_request_with_state(
         raw_body,
         now,
         sink,
-        trust_state.as_mut(),
+        trust_state.as_ref(),
         &HostContext::default(),
     )
 }
@@ -51,7 +51,7 @@ pub fn handle_mcp_jsonrpc_request_with_state(
     raw_body: &str,
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
-    trust_state: &mut dyn TrustStateStore,
+    trust_state: &dyn TrustStateStore,
     host_context: &HostContext,
 ) -> McpJsonRpcResponse {
     handle_mcp_jsonrpc_request_with_state_and_guard_config(
@@ -68,7 +68,7 @@ pub fn handle_mcp_jsonrpc_request_with_state_and_guard_config(
     raw_body: &str,
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
-    trust_state: &mut dyn TrustStateStore,
+    trust_state: &dyn TrustStateStore,
     guard_config: &AdapterGuardConfig,
     host_context: &HostContext,
 ) -> McpJsonRpcResponse {
@@ -423,19 +423,19 @@ mod tests {
                 .as_nanos()
         ));
         let sink = JsonlFileAuditSink::new(sink_path.clone());
-        let mut state = InMemoryTrustState::new();
+        let state = InMemoryTrustState::new();
         let first = handle_mcp_jsonrpc_request_with_state(
             &body,
             now(),
             &sink,
-            &mut state,
+            &state,
             &HostContext::default(),
         );
         let second = handle_mcp_jsonrpc_request_with_state(
             &body,
             now(),
             &sink,
-            &mut state,
+            &state,
             &HostContext::default(),
         );
         assert!(first.error.is_none());
@@ -494,12 +494,12 @@ mod tests {
                 .as_nanos()
         ));
         let sink = JsonlFileAuditSink::new(sink_path.clone());
-        let mut state = InMemoryTrustState::new();
+        let state = InMemoryTrustState::new();
         let first = handle_mcp_jsonrpc_request_with_state_and_guard_config(
             &first_body,
             now(),
             &sink,
-            &mut state,
+            &state,
             &config,
             &HostContext::default(),
         );
@@ -507,7 +507,7 @@ mod tests {
             &second_body,
             now(),
             &sink,
-            &mut state,
+            &state,
             &config,
             &HostContext::default(),
         );

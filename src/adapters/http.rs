@@ -32,12 +32,12 @@ pub fn handle_http_json_request_with_runtime_config(
     sink: &dyn AuditSink,
     runtime_config: &RuntimeTrustConfig,
 ) -> HttpAdapterResponse {
-    let mut trust_state = trust_state_from_runtime_config(runtime_config);
+    let trust_state = trust_state_from_runtime_config(runtime_config);
     handle_http_json_request_with_state(
         raw_body,
         now,
         sink,
-        trust_state.as_mut(),
+        trust_state.as_ref(),
         &HostContext::default(),
     )
 }
@@ -46,7 +46,7 @@ pub fn handle_http_json_request_with_state(
     raw_body: &str,
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
-    trust_state: &mut dyn TrustStateStore,
+    trust_state: &dyn TrustStateStore,
     host_context: &HostContext,
 ) -> HttpAdapterResponse {
     handle_http_json_request_with_state_and_guard_config(
@@ -63,7 +63,7 @@ pub fn handle_http_json_request_with_state_and_guard_config(
     raw_body: &str,
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
-    trust_state: &mut dyn TrustStateStore,
+    trust_state: &dyn TrustStateStore,
     guard_config: &AdapterGuardConfig,
     host_context: &HostContext,
 ) -> HttpAdapterResponse {
@@ -346,21 +346,21 @@ mod tests {
                 .as_nanos()
         ));
         let sink = JsonlFileAuditSink::new(path.clone());
-        let mut trust_state = InMemoryTrustState::new();
+        let trust_state = InMemoryTrustState::new();
         let body = valid_request_body();
 
         let first = handle_http_json_request_with_state(
             &body,
             now(),
             &sink,
-            &mut trust_state,
+            &trust_state,
             &HostContext::default(),
         );
         let second = handle_http_json_request_with_state(
             &body,
             now(),
             &sink,
-            &mut trust_state,
+            &trust_state,
             &HostContext::default(),
         );
 
@@ -396,12 +396,12 @@ mod tests {
         );
         let first_body = request_with_delegator(&delegator);
         let second_body = request_with_delegator(&delegator);
-        let mut state = InMemoryTrustState::new();
+        let state = InMemoryTrustState::new();
         let first = handle_http_json_request_with_state_and_guard_config(
             &first_body,
             now(),
             &sink,
-            &mut state,
+            &state,
             &config,
             &HostContext::default(),
         );
@@ -409,7 +409,7 @@ mod tests {
             &second_body,
             now(),
             &sink,
-            &mut state,
+            &state,
             &config,
             &HostContext::default(),
         );
@@ -442,24 +442,24 @@ mod tests {
         let sink_first = Arc::clone(&sink);
         let config_first = config.clone();
         let first = std::thread::spawn(move || {
-            let mut state = InMemoryTrustState::new();
+            let state = InMemoryTrustState::new();
             handle_http_json_request_with_state_and_guard_config(
                 &first_body,
                 now(),
                 sink_first.as_ref(),
-                &mut state,
+                &state,
                 &config_first,
                 &HostContext::default(),
             )
         });
         std::thread::sleep(Duration::from_millis(20));
 
-        let mut second_state = InMemoryTrustState::new();
+        let second_state = InMemoryTrustState::new();
         let second = handle_http_json_request_with_state_and_guard_config(
             &second_body,
             now(),
             sink.as_ref(),
-            &mut second_state,
+            &second_state,
             &config,
             &HostContext::default(),
         );

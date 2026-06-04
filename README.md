@@ -1,164 +1,264 @@
 # delegated
 
-`delegated` is a Rust trust layer for agent-to-agent communication.  
-It provides a protocol-agnostic trust pipeline, protocol-native adapters (HTTP/MCP/A2A), durable revocation/replay state, discovery/JWKS handlers, and CLI-first approval/revocation workflows.
+Fail-closed trust evaluation for agentic AI systems.
 
-## What this project is
+`delegated` verifies delegation tokens and enforces policy on every agent action — before your tools, APIs, or downstream agents run anything. Drop it in as Tower middleware, call the standalone adapters, or use the client SDK to attach trust claims to outbound requests.
 
-This repository is a **standards-aligned trust runtime** for agent systems.
-Its technical profile, wire contracts, and security model are documented in [`DELEGATED_SPEC.md`](./DELEGATED_SPEC.md).
+[![crates.io](https://img.shields.io/crates/v/delegated.svg)](https://crates.io/crates/delegated)
+[![docs.rs](https://img.shields.io/docsrs/delegated)](https://docs.rs/delegated)
 
-Core capabilities:
+## What it does
 
-- Signature-backed identity + delegation verification (Ed25519)
-- Fail-closed trust evaluation pipeline
-- Revocation, emergency deny, nonce replay protection, delegation depth checks
-- OIDC/SPIFFE/Developer profile compatibility checks
-- HTTP, MCP JSON-RPC, and A2A adapter entrypoints
-- Discovery metadata + JWKS + registry + endpoint resolution handlers
-- CLI lifecycle for sign/verify/approve/revoke
-- Conformance and interop test suites
+- **Verifies** Ed25519-signed delegation tokens and agent identity documents
+- **Enforces** configurable policy: allowed actions, max spend, delegation depth, calendar constraints, email domain allowlists, cognitive and reputation gates
+- **Blocks** revoked tokens, emergency-denied agents, nonce replays — fail-closed on backend errors
+- **Audits** every decision to a structured JSONL sink
+- **Issues** delegation tokens and identity documents via fluent builders with key rotation support
 
-## Project status
+## Feature flags
 
-Current release targets a production-oriented `v0.1` baseline with complete runtime evaluation, protocol adapters, discovery surfaces, and interoperability coverage.  
-It is suitable for integration and controlled production rollout while the profile continues to evolve.
+| Flag | What it enables |
+|---|---|
+| *(none)* | Core evaluation pipeline, adapters, builders, file-backed state |
+| `async` | `AsyncTrustStateStore` trait + async engine variants |
+| `axum` | `DelegatedLayer` Tower middleware for axum |
+| `client` | `DelegatedClient` for sending trust-validated outbound requests |
+| `redis` | `RedisTrustStateStore` backed by Redis (async) |
+| `tracing` | `tracing` spans on the evaluation hot path |
+| `metrics` | `metrics` counters and histograms |
+| `oidc-bridge` | `IdentityVerifier` trait for OIDC-based identity verification |
 
-## Repository layout
+## Quickstart — server side (axum middleware)
 
-- `src/engine.rs` — trust evaluation pipeline orchestration
-- `src/stages.rs` — normalization, signature, lifetime, binding, revocation stages
-- `src/policy.rs` — policy + cognitive/reputation enforcement
-- `src/revocation.rs` — durable/in-memory trust state + runtime config
-- `src/adapters/` — HTTP, MCP, A2A adapters + adapter guardrails
-- `src/discovery.rs` — hostable discovery/JWKS request handlers
-- `src/control_plane.rs` — approval/revoke/report operations
-- `src/bin/delegated-cli.rs` — CLI tools and lifecycle flows
-- `schemas/` — JSON schemas for envelopes, tokens, identity, discovery docs
-- `tests/` — conformance, interop, and CLI integration coverage
+```rust
+use std::sync::Arc;
+use delegated::{
+    DelegatedLayerBuilder, InMemoryAsyncTrustState, JsonlFileAuditSink,
+};
 
-## Quickstart
+let trust_state = Arc::new(InMemoryAsyncTrustState::new());
+let sink = Arc::new(JsonlFileAuditSink::new("audit.jsonl"));
+let layer = DelegatedLayerBuilder::new(trust_state, sink).build();
 
-### Prerequisites
-
-- Rust toolchain (stable)
-
-### Build and test
-
-```bash
-cargo test
+let app = axum::Router::new()
+    .route("/tools/call", axum::routing::post(my_handler))
+    .layer(layer);
 ```
 
-### CLI help
+Every POST to `/tools/call` is evaluated before `my_handler` runs. Denied requests return 403 with `{allowed, stage, reason}` JSON; allowed requests pass through.
+
+## Quickstart — client side
+
+Build a `RequestEnvelope` with the issuance builders and attach it to outbound requests:
+
+```rust
+use delegated::{
+    DelegatedClient,
+    issuance::{AgentIdentityDocumentBuilder, DelegationTokenBuilder, RequestEnvelopeBuilder},
+};
+use ed25519_dalek::SigningKey;
+
+let key = SigningKey::from_bytes(&secret_key_bytes);
+
+let doc = AgentIdentityDocumentBuilder::new()
+    .agent_id("agent:example:scheduler:v1")
+    .owner_id("org:example")
+    .issuer("https://trust.example.ai")
+    .identity_type("spiffe")
+    .subject("spiffe://example.ai/agents/scheduler")
+    .key_id("key-2026-01")
+    // Register an additional key for rotation:
+    .additional_public_key("key-2026-02", &rotation_key.verifying_key())
+    .supported_protocol("http")
+    .supported_auth_method("delegation_token")
+    .endpoint("http", "https://agents.example.ai/scheduler")
+    .build_and_sign(&key)?;
+
+let token = DelegationTokenBuilder::new()
+    .issuer("https://trust.example.ai")
+    .agent_id("agent:example:scheduler:v1")
+    .delegator_id("user:alice")
+    .owner_id("org:example")
+    .audience("tool:google-calendar")
+    .allowed_action("calendar.create_event")
+    .key_id("key-2026-01")
+    .expires_in(chrono::Duration::hours(1))
+    .build_and_sign(&key)?;
+
+let envelope = RequestEnvelopeBuilder::new()
+    .identity_document(doc)
+    .token(token)
+    .audience("tool:google-calendar")
+    .action("calendar.create_event")
+    .build()?;
+
+let client = DelegatedClient::new();
+let resp = client.evaluate_http("https://api.example.com/trust", &envelope).await?;
+if resp.is_allowed() {
+    // proceed
+}
+```
+
+## Standalone adapters (without axum)
+
+Call the adapters directly in any async or sync context:
+
+```rust
+// HTTP (sync)
+use delegated::{handle_http_json_request, JsonlFileAuditSink};
+use chrono::Utc;
+
+let sink = JsonlFileAuditSink::new("audit.jsonl");
+let response = handle_http_json_request(&raw_body, Utc::now(), &sink);
+// response.status_code, response.body["allowed"]
+
+// MCP
+use delegated::handle_mcp_jsonrpc_request;
+let response = handle_mcp_jsonrpc_request(&raw_body, Utc::now(), &sink);
+
+// A2A
+use delegated::handle_a2a_request;
+let response = handle_a2a_request(&raw_body, Utc::now(), &sink);
+```
+
+## Trust state
+
+**Sync** (suitable for single-process / CLI use):
+
+```rust
+use delegated::{InMemoryTrustState, FileBackedTrustState, TrustStateAdmin};
+use std::sync::Arc;
+
+// In-memory with interior mutability — share as Arc<InMemoryTrustState>
+let state = Arc::new(InMemoryTrustState::new());
+state.revoke_token("dlg_abc")?;
+state.emergency_deny_agent("agent:bad")?;
+state.revoke_tokens(&["dlg_1", "dlg_2", "dlg_3"])?;
+state.clear_emergency_deny_list()?;
+state.flush_expired_nonces(chrono::Utc::now())?;
+
+// File-backed (advisory lock, CLI / single-process only)
+let state = FileBackedTrustState::new("~/.delegated/trust-state.json");
+```
+
+**Async** (Redis for production):
+
+```rust
+#[cfg(feature = "redis")]
+use delegated::RedisTrustStateStore;
+let state = Arc::new(RedisTrustStateStore::connect("redis://127.0.0.1").await?);
+// revoke_tokens uses a Redis pipeline; clear_emergency_deny_list uses SCAN+DEL
+```
+
+## Revocation and control plane
+
+```rust
+use delegated::{revoke_token_with_receipt, emergency_deny_agent, InMemoryTrustState};
+
+let state = InMemoryTrustState::new();
+// Revoke with an auditable receipt
+let op = revoke_token_with_receipt(
+    &state, "req_123", "dlg_abc".to_string(), "user:operator",
+    Some("compromised".to_string()), chrono::Utc::now(),
+)?;
+println!("receipt: {}", op.receipt.request_id);
+```
+
+## Trust pipeline
+
+Every evaluation runs these stages in order, fail-closing at the first failure:
+
+1. `normalize_request` — parse and contract-validate the request envelope
+2. `validate_profile_compatibility` — SPIFFE / OIDC / Developer profile checks
+3. `verify_signatures` — Ed25519 on identity document and delegation token
+4. `validate_identity_document_lifetime` — expiry with configurable clock leeway
+5. `enforce_revocation_and_redelegation` — revocation, emergency deny, nonce replay, delegation depth
+6. `validate_token_lifetime` — token `issued_at` / `expires_at` window
+7. `validate_token_binding` — `agent_id`, `delegator_id`, audience cross-check
+8. `evaluate_policy` — allowed actions, max spend, calendar constraints, cognitive/reputation gates
+
+## Custom policy
+
+```rust
+use delegated::{Policy, PolicyCheck, RequestEnvelope, HostContext};
+
+struct MyPolicy;
+impl Policy for MyPolicy {
+    fn evaluate(&self, envelope: &RequestEnvelope, ctx: &HostContext) -> Vec<PolicyCheck> {
+        vec![PolicyCheck {
+            name: "my_check".to_string(),
+            passed: envelope.agent_id.starts_with("agent:trusted:"),
+            reason: "agent not in trusted namespace".to_string(),
+        }]
+    }
+}
+
+// Pass to evaluate_request_with_policy / evaluate_and_audit_with_policy
+```
+
+## CLI
 
 ```bash
 cargo run --bin delegated-cli -- help
+
+# Sign an identity document
+delegated-cli sign-identity identity.json <base64url-private-key>
+
+# Sign a delegation token
+delegated-cli sign-token token.json <base64url-private-key>
+
+# Verify a request envelope offline
+delegated-cli verify-request request.json
+
+# Interactive grant approval
+delegated-cli approve-grant-interactive proposal.json user:operator
+
+# Revoke a token (persists to ~/.delegated/trust-state.json)
+delegated-cli revoke-token req_123 dlg_abc user:operator --reason "manual revoke"
 ```
 
-## Trust state and runtime defaults
+## Repository layout
 
-By default, runtime entrypoints use **durable file-backed trust state**.
-
-- Default path: `~/.delegated/trust-state.json`
-- Override path: `DELEGATED_TRUST_STATE_PATH=/custom/path/trust-state.json`
-
-In-memory state is still available for explicit test/dev usage via runtime config APIs.
-
-## Trust pipeline (high-level)
-
-`evaluate_request*` flows execute:
-
-1. normalize + contract validation
-2. profile compatibility
-3. signature verification
-4. identity + token lifetime checks
-5. revocation / emergency deny / nonce replay / delegation-depth enforcement
-6. token binding checks
-7. policy evaluation
-8. decision + audit event emission
-
-## Protocol adapters
-
-The core pipeline is protocol-agnostic; adapters translate wire payloads into `RequestEnvelope`:
-
-- HTTP: `handle_http_json_request*`
-- MCP: `handle_mcp_jsonrpc_request*`
-- A2A: `handle_a2a_request*`
-
-### Adapter guardrails
-
-Adapter entrypoints enforce `(agent_id, delegator_id)` tuple limits:
-
-- rate limit (default: `120` requests/minute)
-- in-flight concurrency limit (default: `32`)
-
-Tune using `AdapterGuardConfig` and `*_with_state_and_guard_config` adapter variants.
-
-## Discovery and trust bootstrap handlers
-
-`src/discovery.rs` provides framework-agnostic request handlers over `DiscoveryService`:
-
-- `/.well-known/delegated-issuer`
-- `/.well-known/jwks.json?agent_id=...`
-- `/registry/{agent_id}`
-- `/resolve/{agent_id}?protocol=...`
-
-Use `handle_discovery_http_request` in your own HTTP server/router.
-
-## CLI workflows
-
-`delegated-cli` supports:
-
-- `sign-identity`
-- `sign-token`
-- `verify-request`
-- `approve-grant`
-- `approve-grant-interactive`
-- `revoke-token`
-
-### Example: approve and revoke flow
-
-```bash
-# approve grant proposal
-cargo run --bin delegated-cli -- \
-  approve-grant ./proposal.json approve user:operator \
-  --reason "approved for demo" \
-  --token-id dlg_123 \
-  --output ./approval-result.json
-
-# revoke token (persists in durable trust state)
-cargo run --bin delegated-cli -- \
-  revoke-token req_123 dlg_123 user:operator \
-  --reason "manual revoke" \
-  --output ./revocation-result.json
 ```
-
-## Schemas
-
-The `schemas/` folder includes versioned artifacts for:
-
-- request envelope
-- delegation token
-- agent identity document
-- shared trust claims
-- A2A/MCP trust envelopes
-- issuer metadata
-- JWKS
+src/
+  engine.rs            — trust evaluation orchestration
+  stages.rs            — individual evaluation stages
+  policy.rs            — built-in policy checks
+  revocation.rs        — TrustStateStore/Admin traits + InMemoryTrustState + FileBackedTrustState
+  revocation_async.rs  — AsyncTrustStateStore/Admin + InMemoryAsyncTrustState
+  revocation_redis.rs  — RedisTrustStateStore (feature: redis)
+  issuance.rs          — DelegationTokenBuilder + AgentIdentityDocumentBuilder + RequestEnvelopeBuilder
+  adapters/
+    http.rs            — HTTP adapter
+    mcp.rs             — MCP JSON-RPC adapter
+    a2a.rs             — A2A adapter
+    axum_layer.rs      — Tower Layer middleware (feature: axum)
+    guard.rs           — rate limit + concurrency guard
+  client.rs            — DelegatedClient (feature: client)
+  audit.rs             — AuditSink trait + JsonlFileAuditSink
+  discovery.rs         — DiscoveryService + JWKS handlers
+  control_plane.rs     — revocation receipts + operational reports
+  crypto.rs            — signing + verification primitives
+tests/
+  conformance.rs       — end-to-end allow/deny/replay/revocation
+  interop_harness.rs   — cross-adapter and cross-profile parity
+  reference_cli.rs     — CLI signing/verification/approval workflows
+  integration_server.rs — real axum server + DelegatedClient round-trips
+```
 
 ## Testing
 
-Main suites:
-
-- `tests/conformance.rs` — end-to-end allow/deny/tamper/replay/revocation
-- `tests/interop_harness.rs` — parity across HTTP/MCP/A2A and profile variants
-- `tests/reference_cli.rs` — CLI signing/verification/approval/revocation workflows
-
-Run all tests:
-
 ```bash
+# Core tests
 cargo test
+
+# Integration tests (requires axum + client features)
+cargo test --features "axum,client" --test integration_server
+
+# With all optional features
+cargo test --features "async,axum,client,tracing,metrics"
 ```
 
-## Next integration step
+## License
 
-Embed adapter/discovery handlers in your host service, register your identity + issuer metadata in `DiscoveryService`, and enforce trust on every agent/tool hop through the provided adapter entrypoints.
+Licensed under either [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE) at your option.

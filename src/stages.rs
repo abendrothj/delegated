@@ -145,7 +145,7 @@ pub fn verify_signatures_with_verifier(
 
 pub fn enforce_revocation_and_redelegation(
     envelope: RequestEnvelope,
-    state: &mut dyn TrustStateStore,
+    state: &dyn TrustStateStore,
     host_context: &HostContext,
 ) -> Result<RequestEnvelope, Violation> {
     let is_revoked = state

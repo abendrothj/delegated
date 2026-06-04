@@ -122,6 +122,54 @@ impl AsyncTrustStateAdmin for RedisTrustStateStore {
             .await
             .map_err(|e| TrustStateError::new(format!("redis error: {e}")))
     }
+
+    /// Revoke multiple tokens in a single Redis pipeline for reduced round-trips.
+    async fn revoke_tokens(&self, token_ids: &[&str]) -> Result<u64, TrustStateError> {
+        if token_ids.is_empty() {
+            return Ok(0);
+        }
+        let mut conn = self.conn.clone();
+        let mut pipe = redis::pipe();
+        for id in token_ids {
+            pipe.cmd("SET").arg(self.revoked_key(id)).arg("1").ignore();
+        }
+        pipe.query_async::<()>(&mut conn)
+            .await
+            .map_err(|e| TrustStateError::new(format!("redis error: {e}")))?;
+        Ok(token_ids.len() as u64)
+    }
+
+    /// Scan and delete all `{prefix}:denied:*` keys.
+    async fn clear_emergency_deny_list(&self) -> Result<u64, TrustStateError> {
+        let mut conn = self.conn.clone();
+        let pattern = format!("{}:denied:*", self.prefix);
+        let mut cursor: u64 = 0;
+        let mut total_deleted: u64 = 0;
+        loop {
+            let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg(&pattern)
+                .arg("COUNT")
+                .arg(100)
+                .query_async(&mut conn)
+                .await
+                .map_err(|e| TrustStateError::new(format!("redis error: {e}")))?;
+            if !keys.is_empty() {
+                let deleted: u64 = redis::cmd("DEL")
+                    .arg(&keys)
+                    .query_async(&mut conn)
+                    .await
+                    .map_err(|e| TrustStateError::new(format!("redis error: {e}")))?;
+                total_deleted += deleted;
+            }
+            cursor = next_cursor;
+            if cursor == 0 {
+                break;
+            }
+        }
+        Ok(total_deleted)
+    }
 }
 
 /// Remove a revocation entry — call this if a token was revoked by mistake

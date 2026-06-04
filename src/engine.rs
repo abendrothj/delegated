@@ -1,6 +1,5 @@
 use crate::audit::{AuditSink, JsonlFileAuditSink, write_audit_event};
 use crate::models::{AuditEvent, Decision, HostContext, PolicyCheck, RequestEnvelope, Violation};
-use crate::policy::{evaluate_policy, simulate_policy};
 use crate::policy_trait::{DefaultPolicy, Policy};
 use crate::profiles::validate_profile_compatibility;
 use crate::revocation::{RuntimeTrustConfig, TrustStateStore, trust_state_from_runtime_config};
@@ -22,11 +21,11 @@ pub fn evaluate_request_with_runtime_config(
     now: DateTime<Utc>,
     runtime_config: &RuntimeTrustConfig,
 ) -> (Decision, AuditEvent) {
-    let mut trust_state = trust_state_from_runtime_config(runtime_config);
+    let trust_state = trust_state_from_runtime_config(runtime_config);
     evaluate_request_with_state(
         raw_request,
         now,
-        trust_state.as_mut(),
+        trust_state.as_ref(),
         &HostContext::default(),
     )
 }
@@ -34,7 +33,7 @@ pub fn evaluate_request_with_runtime_config(
 pub fn evaluate_request_with_state(
     raw_request: &Value,
     now: DateTime<Utc>,
-    trust_state: &mut dyn TrustStateStore,
+    trust_state: &dyn TrustStateStore,
     host_context: &HostContext,
 ) -> (Decision, AuditEvent) {
     evaluate_request_with_policy(raw_request, now, trust_state, host_context, &DefaultPolicy)
@@ -50,7 +49,7 @@ pub fn evaluate_request_with_state(
 pub fn evaluate_request_with_policy(
     raw_request: &Value,
     now: DateTime<Utc>,
-    trust_state: &mut dyn TrustStateStore,
+    trust_state: &dyn TrustStateStore,
     host_context: &HostContext,
     policy: &dyn Policy,
 ) -> (Decision, AuditEvent) {
@@ -114,7 +113,7 @@ pub fn evaluate_request_with_policy(
 pub fn evaluate_request_with_verifier(
     raw_request: &Value,
     now: DateTime<Utc>,
-    trust_state: &mut dyn TrustStateStore,
+    trust_state: &dyn TrustStateStore,
     host_context: &HostContext,
     verifier: Option<&dyn crate::identity_verifier::IdentityVerifier>,
     policy: &dyn Policy,
@@ -183,12 +182,12 @@ pub fn evaluate_and_audit_with_runtime_config(
     sink: &dyn AuditSink,
     runtime_config: &RuntimeTrustConfig,
 ) -> io::Result<Decision> {
-    let mut trust_state = trust_state_from_runtime_config(runtime_config);
+    let trust_state = trust_state_from_runtime_config(runtime_config);
     evaluate_and_audit_with_state(
         raw_request,
         now,
         sink,
-        trust_state.as_mut(),
+        trust_state.as_ref(),
         &HostContext::default(),
     )
 }
@@ -197,7 +196,7 @@ pub fn evaluate_and_audit_with_state(
     raw_request: &Value,
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
-    trust_state: &mut dyn TrustStateStore,
+    trust_state: &dyn TrustStateStore,
     host_context: &HostContext,
 ) -> io::Result<Decision> {
     evaluate_and_audit_with_policy(raw_request, now, sink, trust_state, host_context, &DefaultPolicy)
@@ -207,7 +206,7 @@ pub fn evaluate_and_audit_with_policy(
     raw_request: &Value,
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
-    trust_state: &mut dyn TrustStateStore,
+    trust_state: &dyn TrustStateStore,
     host_context: &HostContext,
     policy: &dyn Policy,
 ) -> io::Result<Decision> {
@@ -569,7 +568,7 @@ mod tests {
     #[test]
     fn denies_when_cognitive_thresholds_fail() {
         let request = valid_request();
-        let mut trust_state = InMemoryTrustState::new();
+        let trust_state = InMemoryTrustState::new();
         let host_ctx = HostContext {
             cognitive_judge_scores_bps: Some(vec![6000, 5800]),
             cognitive_challenge_pass_bps: Some(7000),
@@ -577,7 +576,7 @@ mod tests {
         };
 
         let (decision, _event) =
-            evaluate_request_with_state(&request, now(), &mut trust_state, &host_ctx);
+            evaluate_request_with_state(&request, now(), &trust_state, &host_ctx);
         assert!(!decision.allowed);
         assert_eq!(decision.stage, "evaluate_policy");
         assert_eq!(
@@ -589,7 +588,7 @@ mod tests {
     #[test]
     fn enforces_reputation_risk_multiplier() {
         let request = valid_request();
-        let mut trust_state = InMemoryTrustState::new();
+        let trust_state = InMemoryTrustState::new();
         let host_ctx = HostContext {
             reputation_score_bps: Some(3000),
             risk_challenge_passed: Some(false),
@@ -598,7 +597,7 @@ mod tests {
         };
 
         let (decision, _event) =
-            evaluate_request_with_state(&request, now(), &mut trust_state, &host_ctx);
+            evaluate_request_with_state(&request, now(), &trust_state, &host_ctx);
         assert!(!decision.allowed);
         assert_eq!(decision.stage, "evaluate_policy");
         assert_eq!(
@@ -627,16 +626,16 @@ mod tests {
 
     #[test]
     fn denies_when_token_is_revoked() {
+        use crate::revocation::TrustStateAdmin;
         let request = valid_request();
-        let mut trust_state = InMemoryTrustState::new();
+        let trust_state = InMemoryTrustState::new();
         let token_id = request["delegation_token"]["token_id"]
             .as_str()
-            .expect("token_id should be present")
-            .to_string();
-        trust_state.revoke_token(token_id);
+            .expect("token_id should be present");
+        trust_state.revoke_token(token_id).expect("revoke should succeed");
 
         let (decision, _event) =
-            evaluate_request_with_state(&request, now(), &mut trust_state, &HostContext::default());
+            evaluate_request_with_state(&request, now(), &trust_state, &HostContext::default());
         assert!(!decision.allowed);
         assert_eq!(decision.stage, "enforce_revocation_and_redelegation");
         assert_eq!(decision.reason, "delegation token has been revoked");
@@ -645,12 +644,12 @@ mod tests {
     #[test]
     fn denies_nonce_replay_with_shared_state() {
         let request = valid_request();
-        let mut trust_state = InMemoryTrustState::new();
+        let trust_state = InMemoryTrustState::new();
 
         let (first, _) =
-            evaluate_request_with_state(&request, now(), &mut trust_state, &HostContext::default());
+            evaluate_request_with_state(&request, now(), &trust_state, &HostContext::default());
         let (second, _) =
-            evaluate_request_with_state(&request, now(), &mut trust_state, &HostContext::default());
+            evaluate_request_with_state(&request, now(), &trust_state, &HostContext::default());
 
         assert!(first.allowed);
         assert!(!second.allowed);
@@ -661,11 +660,11 @@ mod tests {
     #[test]
     fn fails_closed_when_revocation_backend_unavailable() {
         let request = valid_request();
-        let mut trust_state = InMemoryTrustState::new();
+        let trust_state = InMemoryTrustState::new();
         trust_state.set_backend_available(false);
 
         let (decision, _) =
-            evaluate_request_with_state(&request, now(), &mut trust_state, &HostContext::default());
+            evaluate_request_with_state(&request, now(), &trust_state, &HostContext::default());
         assert!(!decision.allowed);
         assert_eq!(decision.stage, "enforce_revocation_and_redelegation");
         assert_eq!(
@@ -763,11 +762,11 @@ mod tests {
             }
         }
 
-        let mut trust_state = InMemoryTrustState::new();
+        let trust_state = InMemoryTrustState::new();
         let (decision, _) = evaluate_request_with_policy(
             &valid_request(),
             now(),
-            &mut trust_state,
+            &trust_state,
             &HostContext::default(),
             &AlwaysDenyPolicy,
         );
