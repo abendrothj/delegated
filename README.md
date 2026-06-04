@@ -6,6 +6,7 @@ Fail-closed trust evaluation for agentic AI systems.
 
 [![crates.io](https://img.shields.io/crates/v/delegated.svg)](https://crates.io/crates/delegated)
 [![docs.rs](https://img.shields.io/docsrs/delegated)](https://docs.rs/crate/delegated/latest)
+[![CI](https://github.com/abendrothj/delegated/actions/workflows/ci.yml/badge.svg)](https://github.com/abendrothj/delegated/actions/workflows/ci.yml)
 
 ## What it does
 
@@ -14,6 +15,16 @@ Fail-closed trust evaluation for agentic AI systems.
 - **Blocks** revoked tokens, emergency-denied agents, nonce replays — fail-closed on backend errors
 - **Audits** every decision to a structured JSONL sink
 - **Issues** delegation tokens and identity documents via fluent builders with key rotation support
+
+## Security and reliability
+
+- Security policy and reporting: [`SECURITY.md`](SECURITY.md)
+- CI enforces format/lint/tests/publish dry-run on pushes and PRs
+- Quick local baseline benchmark:
+
+```bash
+cargo run --release --example eval_benchmark -- 20000
+```
 
 ## Feature flags
 
