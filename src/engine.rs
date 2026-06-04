@@ -54,6 +54,9 @@ pub fn evaluate_request_with_policy(
     host_context: &HostContext,
     policy: &dyn Policy,
 ) -> (Decision, AuditEvent) {
+    #[cfg(feature = "metrics")]
+    let _eval_start = std::time::Instant::now();
+
     let leeway = Duration::seconds(host_context.clock_leeway_secs as i64);
 
     let result = normalize_request(raw_request)
@@ -72,6 +75,12 @@ pub fn evaluate_request_with_policy(
             let decision = Decision::allow("evaluate_policy", "request authorized");
             #[cfg(feature = "tracing")]
             tracing::info!(allowed = true, stage = "evaluate_policy", "trust decision: allowed");
+            #[cfg(feature = "metrics")]
+            {
+                metrics::counter!("delegated_requests_total", "allowed" => "true").increment(1);
+                metrics::histogram!("delegated_evaluation_duration_seconds")
+                    .record(_eval_start.elapsed().as_secs_f64());
+            }
             let event = from_envelope(envelope, &decision, now);
             (decision, event)
         }
@@ -83,6 +92,17 @@ pub fn evaluate_request_with_policy(
                 reason = %violation.reason,
                 "trust decision: denied"
             );
+            #[cfg(feature = "metrics")]
+            {
+                metrics::counter!(
+                    "delegated_requests_total",
+                    "allowed" => "false",
+                    "stage" => violation.stage
+                )
+                .increment(1);
+                metrics::histogram!("delegated_evaluation_duration_seconds")
+                    .record(_eval_start.elapsed().as_secs_f64());
+            }
             let decision = Decision::deny(violation.stage, violation.reason.clone());
             let event = from_raw(raw_request, &violation, now);
             (decision, event)

@@ -16,6 +16,9 @@ pub mod revocation;
 pub mod stages;
 pub mod wire;
 
+#[cfg(feature = "client")]
+pub mod client;
+
 #[cfg(feature = "async")]
 pub mod engine_async;
 #[cfg(feature = "async")]
@@ -72,6 +75,7 @@ pub use engine::{
     evaluate_request_with_state, simulate_request_policy, simulate_request_policy_with_policy,
 };
 pub use host_context::{HostContextBuilder, HostContextProvider, StaticHostContextProvider};
+pub use contracts::{SPEC_VERSION_CURRENT, SUPPORTED_SPEC_VERSIONS};
 pub use issuance::{
     AgentIdentityDocumentBuilder, DelegationTokenBuilder, IssuanceError, RequestEnvelopeBuilder,
 };
@@ -120,6 +124,12 @@ pub use revocation_async::{AsyncTrustStateAdmin, AsyncTrustStateStore, InMemoryA
 #[cfg(feature = "axum")]
 pub use adapters::axum_layer::{
     AsyncHostContextProvider, DelegatedLayer, DelegatedLayerBuilder, StaticAsyncHostContextProvider,
+};
+
+#[cfg(feature = "client")]
+pub use client::{
+    A2aTrustResponse, ClientError, ClientErrorKind, DelegatedClient, HttpTrustResponse,
+    McpTrustResponse,
 };
 
 #[cfg(feature = "redis")]

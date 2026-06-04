@@ -1,7 +1,18 @@
 use crate::crypto::TOKEN_SIGNATURE_ALG_ED25519;
 use crate::models::{AgentIdentityDocument, DelegationToken, RequestEnvelope, Violation};
 
+/// The spec version this build was compiled against. Use this constant in issuance
+/// code so that bumping the protocol version only requires changing it here.
+pub const SPEC_VERSION_CURRENT: &str = "0.1";
+
+/// All spec versions this build can evaluate. Validators check membership here,
+/// not equality against a single version, so callers holding older tokens
+/// continue to work after a protocol bump until explicitly removed.
+pub const SUPPORTED_SPEC_VERSIONS: &[&str] = &["0.1"];
+
+#[deprecated(since = "0.1.0", note = "Use SPEC_VERSION_CURRENT instead")]
 pub const SPEC_VERSION_V0_1: &str = "0.1";
+
 pub const KIND_TRUST_REQUEST_ENVELOPE: &str = "TrustRequestEnvelope";
 pub const KIND_DELEGATION_TOKEN: &str = "DelegationToken";
 pub const KIND_AGENT_IDENTITY_DOCUMENT: &str = "AgentIdentityDocument";
@@ -194,10 +205,13 @@ fn validate_identity_document(document: &AgentIdentityDocument) -> Result<(), Vi
 
 fn validate_spec_version(field_name: &str, value: &str) -> Result<(), Violation> {
     validate_non_empty(field_name, value)?;
-    if value != SPEC_VERSION_V0_1 {
+    if !SUPPORTED_SPEC_VERSIONS.contains(&value) {
+        let supported = SUPPORTED_SPEC_VERSIONS.join(", ");
         return Err(Violation::new(
             "normalize_request",
-            format!("{field_name} must be supported version {SPEC_VERSION_V0_1}"),
+            format!(
+                "{field_name} specifies unsupported version {value:?}; supported: {supported}"
+            ),
         ));
     }
     Ok(())

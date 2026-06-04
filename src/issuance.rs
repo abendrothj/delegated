@@ -1,3 +1,4 @@
+use crate::contracts::SPEC_VERSION_CURRENT;
 use crate::crypto::{
     TOKEN_SIGNATURE_ALG_ED25519, sign_delegation_token, sign_identity_document,
 };
@@ -246,7 +247,7 @@ impl DelegationTokenBuilder {
 
         let suffix = unique_suffix();
         let mut token = DelegationToken {
-            spec_version: "0.1".to_string(),
+            spec_version: SPEC_VERSION_CURRENT.to_string(),
             kind: "DelegationToken".to_string(),
             token_id: self
                 .token_id
@@ -447,7 +448,7 @@ impl AgentIdentityDocumentBuilder {
         }];
 
         let mut doc = AgentIdentityDocument {
-            spec_version: "0.1".to_string(),
+            spec_version: SPEC_VERSION_CURRENT.to_string(),
             kind: "AgentIdentityDocument".to_string(),
             agent_id,
             display_name: self.display_name,
@@ -593,7 +594,7 @@ impl RequestEnvelopeBuilder {
             .unwrap_or_else(|| token.delegator_id.clone());
 
         Ok(RequestEnvelope {
-            spec_version: "0.1".to_string(),
+            spec_version: SPEC_VERSION_CURRENT.to_string(),
             kind: "TrustRequestEnvelope".to_string(),
             request_id: Some(
                 self.request_id
