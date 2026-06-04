@@ -5,7 +5,8 @@ It provides a protocol-agnostic trust pipeline, protocol-native adapters (HTTP/M
 
 ## What this project is
 
-This repository is a **reference implementation** of the trust model in [`DELEGATED_SPEC.md`](./DELEGATED_SPEC.md).
+This repository is a **standards-aligned trust runtime** for agent systems.
+Its technical profile, wire contracts, and security model are documented in [`DELEGATED_SPEC.md`](./DELEGATED_SPEC.md).
 
 Core capabilities:
 
@@ -20,8 +21,8 @@ Core capabilities:
 
 ## Project status
 
-The implementation is production-oriented but still spec-driven (`v0.1` artifacts).  
-Use this as a base for product integration and standardization work, not as a finalized internet standard.
+Current release targets a production-oriented `v0.1` baseline with complete runtime evaluation, protocol adapters, discovery surfaces, and interoperability coverage.  
+It is suitable for integration and controlled production rollout while the profile continues to evolve.
 
 ## Repository layout
 
