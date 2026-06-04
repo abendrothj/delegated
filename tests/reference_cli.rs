@@ -47,7 +47,6 @@ fn sample_token() -> DelegationToken {
         resource_constraints: None,
         max_spend: None,
         max_delegation_depth: Some(0),
-        approval_policy: None,
         issued_at: Utc
             .with_ymd_and_hms(2024, 6, 1, 20, 10, 0)
             .single()
@@ -118,18 +117,7 @@ fn signed_request_json() -> Value {
         audience: "tool:google-calendar".to_string(),
         action: "calendar.create_event".to_string(),
         resource: None,
-        runtime_context: RuntimeContext {
-            requested_spend: None,
-            spend_currency: None,
-            delegation_depth: Some(0),
-            target_email: None,
-            target_calendar_id: None,
-            cognitive_judge_scores_bps: Some(vec![9300, 9100]),
-            cognitive_challenge_pass_bps: Some(9200),
-            reputation_score_bps: Some(8300),
-            risk_challenge_passed: None,
-            extra_approval_granted: None,
-        },
+        runtime_context: RuntimeContext::default(),
         identity_document: Some(identity_document),
         token,
     };

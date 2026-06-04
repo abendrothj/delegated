@@ -148,7 +148,6 @@ mod tests {
                 resource_constraints: None,
                 max_spend: None,
                 max_delegation_depth: Some(0),
-                approval_policy: None,
                 issued_at: Utc
                     .with_ymd_and_hms(2026, 6, 1, 20, 10, 0)
                     .single()

@@ -1,37 +1,41 @@
-use crate::models::{PolicyCheck, RequestEnvelope, Violation};
+use crate::models::{HostContext, PolicyCheck, RequestEnvelope, Violation};
 
 const MIN_COGNITIVE_JUDGES: usize = 2;
 const MIN_COGNITIVE_AVG_SCORE_BPS: u32 = 8_500;
 const MIN_COGNITIVE_CHALLENGE_PASS_BPS: u16 = 9_000;
 const REPUTATION_ALERT_THRESHOLD_BPS: u16 = 7_000;
 
-pub fn evaluate_policy(envelope: RequestEnvelope) -> Result<RequestEnvelope, Violation> {
-    let checks = simulate_policy(&envelope);
+pub fn evaluate_policy(
+    envelope: RequestEnvelope,
+    host_context: &HostContext,
+) -> Result<RequestEnvelope, Violation> {
+    let checks = simulate_policy(&envelope, host_context);
     if let Some(failure) = checks.iter().find(|check| !check.passed) {
         return Err(Violation::new("evaluate_policy", failure.reason.clone()));
     }
     Ok(envelope)
 }
 
-pub fn simulate_policy(envelope: &RequestEnvelope) -> Vec<PolicyCheck> {
+pub fn simulate_policy(envelope: &RequestEnvelope, host_context: &HostContext) -> Vec<PolicyCheck> {
     let mut checks = Vec::new();
 
     checks.push(check_allowed_action(envelope));
-    checks.push(check_cognitive_gate(envelope));
-    checks.push(check_reputation_risk_multiplier(envelope));
+    checks.push(check_cognitive_gate(host_context));
+    checks.push(check_reputation_risk_multiplier(host_context));
     checks.push(check_calendar_constraint(envelope));
     checks.push(check_email_domain_allowlist(envelope));
     checks.push(check_max_spend(envelope));
-    checks.push(check_delegation_depth(envelope));
+    checks.push(check_delegation_depth(envelope, host_context));
 
     checks
 }
 
-fn check_cognitive_gate(envelope: &RequestEnvelope) -> PolicyCheck {
-    let Some(scores) = envelope.runtime_context.cognitive_judge_scores_bps.as_ref() else {
-        return fail(
+fn check_cognitive_gate(host_context: &HostContext) -> PolicyCheck {
+    let Some(scores) = host_context.cognitive_judge_scores_bps.as_ref() else {
+        // Cognitive verification is not configured; gate is skipped.
+        return pass(
             "cognitive_gate",
-            "cognitive hard-deny requires runtime cognitive_judge_scores_bps",
+            "cognitive verification not configured; gate skipped",
         );
     };
     if scores.len() < MIN_COGNITIVE_JUDGES {
@@ -50,7 +54,7 @@ fn check_cognitive_gate(envelope: &RequestEnvelope) -> PolicyCheck {
         );
     }
 
-    let Some(challenge_pass_bps) = envelope.runtime_context.cognitive_challenge_pass_bps else {
+    let Some(challenge_pass_bps) = host_context.cognitive_challenge_pass_bps else {
         return fail(
             "cognitive_gate",
             "cognitive hard-deny requires cognitive_challenge_pass_bps",
@@ -69,8 +73,8 @@ fn check_cognitive_gate(envelope: &RequestEnvelope) -> PolicyCheck {
     )
 }
 
-fn check_reputation_risk_multiplier(envelope: &RequestEnvelope) -> PolicyCheck {
-    let Some(reputation_score) = envelope.runtime_context.reputation_score_bps else {
+fn check_reputation_risk_multiplier(host_context: &HostContext) -> PolicyCheck {
+    let Some(reputation_score) = host_context.reputation_score_bps else {
         return pass(
             "reputation_risk_multiplier",
             "no reputation score provided; no additional risk multiplier applied",
@@ -84,14 +88,8 @@ fn check_reputation_risk_multiplier(envelope: &RequestEnvelope) -> PolicyCheck {
         );
     }
 
-    if envelope
-        .runtime_context
-        .risk_challenge_passed
-        .unwrap_or(false)
-        || envelope
-            .runtime_context
-            .extra_approval_granted
-            .unwrap_or(false)
+    if host_context.risk_challenge_passed.unwrap_or(false)
+        || host_context.extra_approval_granted.unwrap_or(false)
     {
         return pass(
             "reputation_risk_multiplier",
@@ -204,11 +202,11 @@ fn check_max_spend(envelope: &RequestEnvelope) -> PolicyCheck {
     fail("max_spend", "requested spend exceeds token max_spend")
 }
 
-fn check_delegation_depth(envelope: &RequestEnvelope) -> PolicyCheck {
+fn check_delegation_depth(envelope: &RequestEnvelope, host_context: &HostContext) -> PolicyCheck {
     let Some(max_depth) = envelope.token.max_delegation_depth else {
         return pass("delegation_depth", "no max delegation depth configured");
     };
-    let Some(request_depth) = envelope.runtime_context.delegation_depth else {
+    let Some(request_depth) = host_context.delegation_depth else {
         return pass(
             "delegation_depth",
             "no runtime delegation depth provided for depth check",

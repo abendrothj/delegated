@@ -1,8 +1,8 @@
 use crate::contracts::validate_request_contract;
 use crate::crypto::{verify_delegation_token_signature, verify_identity_document_signature};
-use crate::models::{RequestEnvelope, Violation};
+use crate::models::{HostContext, RequestEnvelope, Violation};
 use crate::revocation::TrustStateStore;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde_json::Value;
 
 pub fn normalize_request(raw_request: &Value) -> Result<RequestEnvelope, Violation> {
@@ -20,15 +20,16 @@ pub fn normalize_request(raw_request: &Value) -> Result<RequestEnvelope, Violati
 pub fn validate_token_lifetime(
     envelope: RequestEnvelope,
     now: DateTime<Utc>,
+    leeway: Duration,
 ) -> Result<RequestEnvelope, Violation> {
-    if envelope.token.issued_at > now {
+    if envelope.token.issued_at > now + leeway {
         return Err(Violation::new(
             "validate_token_lifetime",
             "delegation token not active yet",
         ));
     }
 
-    if envelope.token.expires_at <= now {
+    if envelope.token.expires_at + leeway <= now {
         return Err(Violation::new(
             "validate_token_lifetime",
             "delegation token expired",
@@ -41,6 +42,7 @@ pub fn validate_token_lifetime(
 pub fn validate_identity_document_lifetime(
     envelope: RequestEnvelope,
     now: DateTime<Utc>,
+    leeway: Duration,
 ) -> Result<RequestEnvelope, Violation> {
     let identity_document = envelope.identity_document.as_ref().ok_or_else(|| {
         Violation::new(
@@ -48,7 +50,7 @@ pub fn validate_identity_document_lifetime(
             "identity_document is required for lifetime checks",
         )
     })?;
-    if identity_document.expires_at <= now {
+    if identity_document.expires_at + leeway <= now {
         return Err(Violation::new(
             "validate_identity_document_lifetime",
             "identity document expired",
@@ -117,6 +119,7 @@ pub fn verify_signatures(envelope: RequestEnvelope) -> Result<RequestEnvelope, V
 pub fn enforce_revocation_and_redelegation(
     envelope: RequestEnvelope,
     state: &mut dyn TrustStateStore,
+    host_context: &HostContext,
 ) -> Result<RequestEnvelope, Violation> {
     let is_revoked = state
         .is_token_revoked(&envelope.token.token_id)
@@ -164,7 +167,7 @@ pub fn enforce_revocation_and_redelegation(
     }
 
     if let Some(max_depth) = envelope.token.max_delegation_depth {
-        let runtime_depth = envelope.runtime_context.delegation_depth.unwrap_or(0);
+        let runtime_depth = host_context.delegation_depth.unwrap_or(0);
         if runtime_depth > max_depth {
             return Err(Violation::new(
                 "enforce_revocation_and_redelegation",

@@ -46,6 +46,14 @@ fn global_guard_state() -> &'static Mutex<AdapterGuardState> {
     STATE.get_or_init(|| Mutex::new(AdapterGuardState::default()))
 }
 
+/// Acquires a rate-limit and concurrency lease for the given `(agent_id, delegator_id)` tuple.
+///
+/// **Process-local**: guard state is held in a process-local `OnceLock<Mutex<...>>` and
+/// resets on every process restart. In a multi-process or multi-instance deployment, each
+/// instance enforces limits independently — there is no shared counter. This is intentional
+/// for low-overhead enforcement within a single process, but callers that need cluster-wide
+/// rate limiting must implement it at an upstream layer (e.g., a shared Redis counter or an
+/// API gateway).
 pub fn enter_adapter_guard(
     agent_id: &str,
     delegator_id: &str,

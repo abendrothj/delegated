@@ -74,7 +74,7 @@ pub fn emergency_deny_agent(
 }
 
 pub fn simulate_policy(raw_request: &Value) -> Result<PolicySimulationResult, Violation> {
-    let checks = simulate_request_policy(raw_request)?;
+    let checks = simulate_request_policy(raw_request, &crate::models::HostContext::default())?;
     Ok(PolicySimulationResult { checks })
 }
 

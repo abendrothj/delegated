@@ -54,7 +54,9 @@ pub use engine::{
     evaluate_and_audit_with_state, evaluate_request, evaluate_request_with_runtime_config,
     evaluate_request_with_state, simulate_request_policy,
 };
-pub use models::{AuditEvent, Decision, PolicyCheck, RequestEnvelope, TrustProfile, Violation};
+pub use models::{
+    AuditEvent, Decision, HostContext, PolicyCheck, RequestEnvelope, TrustProfile, Violation,
+};
 pub use profiles::validate_profile_compatibility;
 pub use revocation::{
     FileBackedTrustState, InMemoryTrustState, RuntimeTrustConfig, TrustStateAdmin,

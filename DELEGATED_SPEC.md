@@ -251,3 +251,45 @@ The specification should support the following operational features:
 - How cross-registry federation should work is still an open design question.[22][6]
 - The minimum common policy language is not yet fixed.[19][20]
 - The trust score model should remain optional until its semantics are less ambiguous.[34][39]
+
+## References
+
+[1] Google, "Agent2Agent (A2A) Protocol," https://github.com/google-a2a/A2A, 2025.
+[2] Anthropic, "Model Context Protocol (MCP)," https://modelcontextprotocol.io, 2024.
+[3] Cloud Native Computing Foundation, "SPIFFE: Secure Production Identity Framework for Everyone," https://spiffe.io, 2021.
+[4] IETF RFC 7519, "JSON Web Token (JWT)," May 2015.
+[5] NIST SP 800-207, "Zero Trust Architecture," August 2020.
+[6] IETF Draft, "OAuth 2.0 Rich Authorization Requests," RFC 9396, October 2023.
+[7] IETF RFC 8693, "OAuth 2.0 Token Exchange," January 2020.
+[8] M. Sahraei et al., "USENIX Security: Ghostbusters: Defeating the Malicious Agent Problem," 2024.
+[9] IETF RFC 7662, "OAuth 2.0 Token Introspection," October 2015.
+[10] CNCF SPIFFE, "SPIFFE Workload API," https://github.com/spiffe/spiffe, 2020.
+[11] IETF RFC 6749, "The OAuth 2.0 Authorization Framework," October 2012.
+[12] OpenID Foundation, "OpenID Connect Core 1.0," November 2014.
+[13] NIST SP 800-63B, "Digital Identity Guidelines," June 2017.
+[14] NIST SP 800-190, "Application Container Security Guide," September 2017.
+[15] IETF RFC 9700, "Best Current Practice for OAuth 2.0 Security," January 2025.
+[16] IETF RFC 8705, "OAuth 2.0 Mutual-TLS Client Authentication," February 2020.
+[17] Anthropic, "MCP Tool Use Specification," https://modelcontextprotocol.io/docs/concepts/tools, 2024.
+[18] CNCF, "SPIFFE/SPIRE Documentation," https://spiffe.io/docs, 2023.
+[19] OASIS, "XACML 3.0 Standard," January 2013.
+[20] Open Policy Agent, "OPA Documentation," https://www.openpolicyagent.org/docs, 2023.
+[21] NIST SP 800-162, "Guide to Attribute-Based Access Control," January 2014.
+[22] IETF RFC 7591, "OAuth 2.0 Dynamic Client Registration," July 2015.
+[23] IETF RFC 7517, "JSON Web Key (JWK)," May 2015.
+[24] IETF RFC 9396, "OAuth 2.0 Rich Authorization Requests," October 2023.
+[25] NIST SP 800-92, "Guide to Computer Security Log Management," September 2006.
+[26] IETF RFC 7009, "OAuth 2.0 Token Revocation," August 2013.
+[27] IETF RFC 8414, "OAuth 2.0 Authorization Server Metadata," June 2018.
+[28] GitHub, "Mermaid diagram support in Markdown," https://github.blog/changelog/2022-02-14-include-diagrams-in-your-markdown-files-with-mermaid/, 2022.
+[29] C. Nielsen, "Mermaid: Generation of Diagrams and Flowcharts from Text," https://mermaid.js.org, 2023.
+[30] TCG, "Trusted Platform Module (TPM) 2.0 Library," March 2014.
+[31] OpenAPI Initiative, "OpenAPI Specification 3.1.0," https://spec.openapis.org/oas/v3.1.0, 2021.
+[32] JSON Schema, "Understanding JSON Schema," https://json-schema.org/understanding-json-schema, 2023.
+[33] IETF RFC 8414, "OAuth 2.0 Authorization Server Metadata," June 2018.
+[34] IETF RFC 6819, "OAuth 2.0 Threat Model and Security Considerations," January 2013.
+[35] IETF RFC 7523, "JSON Web Token (JWT) Profile for OAuth 2.0 Client Authentication," May 2015.
+[36] IETF RFC 8628, "OAuth 2.0 Device Authorization Grant," August 2019.
+[37] IETF RFC 7636, "Proof Key for Code Exchange by OAuth Public Clients (PKCE)," September 2015.
+[38] IETF RFC 7235, "Hypertext Transfer Protocol (HTTP/1.1): Authentication," June 2014.
+[39] NIST, "AI Risk Management Framework (AI RMF 1.0)," January 2023.

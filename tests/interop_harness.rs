@@ -83,7 +83,6 @@ fn signed_request(
         resource_constraints: None,
         max_spend: None,
         max_delegation_depth: Some(0),
-        approval_policy: None,
         issued_at: Utc
             .with_ymd_and_hms(2026, 6, 1, 20, 10, 0)
             .single()
@@ -110,18 +109,7 @@ fn signed_request(
         audience: "tool:google-calendar".to_string(),
         action: "calendar.create_event".to_string(),
         resource: None,
-        runtime_context: RuntimeContext {
-            requested_spend: None,
-            spend_currency: None,
-            delegation_depth: Some(0),
-            target_email: None,
-            target_calendar_id: None,
-            cognitive_judge_scores_bps: Some(vec![9300, 9100]),
-            cognitive_challenge_pass_bps: Some(9200),
-            reputation_score_bps: Some(8300),
-            risk_challenge_passed: None,
-            extra_approval_granted: None,
-        },
+        runtime_context: RuntimeContext::default(),
         identity_document: Some(identity_document),
         token,
     }
@@ -145,9 +133,27 @@ fn run_across_adapters(envelope: RequestEnvelope) -> (u16, Option<serde_json::Va
     let mut mcp_state = InMemoryTrustState::new();
     let mut a2a_state = InMemoryTrustState::new();
 
-    let http = handle_http_json_request_with_state(&http_body, now(), &sink, &mut http_state);
-    let mcp = handle_mcp_jsonrpc_request_with_state(&mcp_body, now(), &sink, &mut mcp_state);
-    let a2a = handle_a2a_request_with_state(&a2a_body, now(), &sink, &mut a2a_state);
+    let http = handle_http_json_request_with_state(
+        &http_body,
+        now(),
+        &sink,
+        &mut http_state,
+        &delegated::HostContext::default(),
+    );
+    let mcp = handle_mcp_jsonrpc_request_with_state(
+        &mcp_body,
+        now(),
+        &sink,
+        &mut mcp_state,
+        &delegated::HostContext::default(),
+    );
+    let a2a = handle_a2a_request_with_state(
+        &a2a_body,
+        now(),
+        &sink,
+        &mut a2a_state,
+        &delegated::HostContext::default(),
+    );
     let _ = std::fs::remove_file(sink_path);
     (http.status_code, mcp.error, a2a.status)
 }
@@ -203,9 +209,8 @@ fn produces_equivalent_deny_decisions_across_http_mcp_a2a() {
         vec!["delegation_token".to_string()],
         vec!["http".to_string(), "mcp".to_string(), "a2a".to_string()],
     );
-    envelope.runtime_context.reputation_score_bps = Some(1000);
-    envelope.runtime_context.risk_challenge_passed = Some(false);
-    envelope.runtime_context.extra_approval_granted = Some(false);
+    // Trigger denial via a disallowed action (reputation fields moved to HostContext).
+    envelope.action = "calendar.delete_event".to_string();
 
     let (http_status, mcp_error, a2a_status) = run_across_adapters(envelope);
 
@@ -215,9 +220,7 @@ fn produces_equivalent_deny_decisions_across_http_mcp_a2a() {
             .as_ref()
             .and_then(|e| e.get("data"))
             .and_then(|d| d.get("reason")),
-        Some(&json!(
-            "low reputation requires additional challenge pass or explicit approval"
-        ))
+        Some(&json!("requested action not in token allowed_actions"))
     );
     assert_eq!(a2a_status, "denied");
 }

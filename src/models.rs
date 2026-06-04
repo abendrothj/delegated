@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
@@ -26,6 +27,42 @@ impl Display for Violation {
 
 impl Error for Violation {}
 
+/// Context supplied by the host application from trusted external sources.
+/// These fields must never be populated from the incoming request envelope — they represent
+/// infrastructure-verified state (reputation services, cognitive oracles, human approvals).
+#[derive(Debug, Clone)]
+pub struct HostContext {
+    /// Delegation chain depth tracked by the infrastructure, not reported by the agent.
+    pub delegation_depth: Option<u16>,
+    /// Scores (0–10000 bps) from independent external cognitive judges.
+    /// When `None`, cognitive verification is not configured and the gate is skipped.
+    pub cognitive_judge_scores_bps: Option<Vec<u16>>,
+    /// Overall challenge pass rate from an external challenge service (0–10000 bps).
+    pub cognitive_challenge_pass_bps: Option<u16>,
+    /// Agent reputation score from an external reputation service (0–10000 bps).
+    pub reputation_score_bps: Option<u16>,
+    /// Whether the agent passed an additional risk challenge from an external risk service.
+    pub risk_challenge_passed: Option<bool>,
+    /// Whether a human operator explicitly granted extra approval for this request.
+    pub extra_approval_granted: Option<bool>,
+    /// Permitted clock skew in seconds for token/document lifetime checks. Default: 30.
+    pub clock_leeway_secs: u64,
+}
+
+impl Default for HostContext {
+    fn default() -> Self {
+        Self {
+            delegation_depth: None,
+            cognitive_judge_scores_bps: None,
+            cognitive_challenge_pass_bps: None,
+            reputation_score_bps: None,
+            risk_challenge_passed: None,
+            extra_approval_granted: None,
+            clock_leeway_secs: 30,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DelegationToken {
     pub spec_version: String,
@@ -40,7 +77,6 @@ pub struct DelegationToken {
     pub resource_constraints: Option<ResourceConstraints>,
     pub max_spend: Option<MaxSpend>,
     pub max_delegation_depth: Option<u16>,
-    pub approval_policy: Option<serde_json::Value>,
     pub issued_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
     pub intent: Option<String>,
@@ -82,20 +118,17 @@ pub enum TrustProfile {
 pub struct ResourceConstraints {
     pub calendar_ids: Option<Vec<String>>,
     pub email_domain_allowlist: Option<Vec<String>>,
+    /// Host-defined additional constraints; keys are constraint names, values are allowlists.
+    #[serde(flatten)]
+    pub extra: HashMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct RuntimeContext {
     pub requested_spend: Option<i64>,
     pub spend_currency: Option<String>,
-    pub delegation_depth: Option<u16>,
     pub target_email: Option<String>,
     pub target_calendar_id: Option<String>,
-    pub cognitive_judge_scores_bps: Option<Vec<u16>>,
-    pub cognitive_challenge_pass_bps: Option<u16>,
-    pub reputation_score_bps: Option<u16>,
-    pub risk_challenge_passed: Option<bool>,
-    pub extra_approval_granted: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

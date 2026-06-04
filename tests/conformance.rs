@@ -71,7 +71,6 @@ fn signed_request_value(request_id: &str, nonce: &str) -> Value {
         resource_constraints: None,
         max_spend: None,
         max_delegation_depth: Some(0),
-        approval_policy: None,
         issued_at: Utc
             .with_ymd_and_hms(2026, 6, 1, 20, 10, 0)
             .single()
@@ -98,18 +97,7 @@ fn signed_request_value(request_id: &str, nonce: &str) -> Value {
         audience: "tool:google-calendar".to_string(),
         action: "calendar.create_event".to_string(),
         resource: None,
-        runtime_context: RuntimeContext {
-            requested_spend: None,
-            spend_currency: None,
-            delegation_depth: Some(0),
-            target_email: None,
-            target_calendar_id: None,
-            cognitive_judge_scores_bps: Some(vec![9300, 9100]),
-            cognitive_challenge_pass_bps: Some(9200),
-            reputation_score_bps: Some(8300),
-            risk_challenge_passed: None,
-            extra_approval_granted: None,
-        },
+        runtime_context: RuntimeContext::default(),
         identity_document: Some(identity_document),
         token,
     };
@@ -136,7 +124,13 @@ fn allows_signed_request_end_to_end() {
     let mut state = InMemoryTrustState::new();
     let body = signed_request_value("req_conf_allow", "nonce-allow").to_string();
 
-    let response = handle_http_json_request_with_state(&body, now(), &sink, &mut state);
+    let response = handle_http_json_request_with_state(
+        &body,
+        now(),
+        &sink,
+        &mut state,
+        &delegated::HostContext::default(),
+    );
     assert_eq!(response.status_code, 200);
     assert_eq!(response.body["allowed"], json!(true));
 
@@ -157,8 +151,13 @@ fn denies_tampered_signature_end_to_end() {
     let mut request = signed_request_value("req_conf_tamper", "nonce-tamper");
     request["delegation_token"]["signature"] = json!("tampered-signature");
 
-    let response =
-        handle_http_json_request_with_state(&request.to_string(), now(), &sink, &mut state);
+    let response = handle_http_json_request_with_state(
+        &request.to_string(),
+        now(),
+        &sink,
+        &mut state,
+        &delegated::HostContext::default(),
+    );
     assert_eq!(response.status_code, 403);
     assert_eq!(response.body["stage"], json!("verify_signatures"));
 
@@ -182,8 +181,13 @@ fn denies_revoked_token_end_to_end() {
         .expect("token_id must be present");
     state.revoke_token(token_id.to_string());
 
-    let response =
-        handle_http_json_request_with_state(&request.to_string(), now(), &sink, &mut state);
+    let response = handle_http_json_request_with_state(
+        &request.to_string(),
+        now(),
+        &sink,
+        &mut state,
+        &delegated::HostContext::default(),
+    );
     assert_eq!(response.status_code, 403);
     assert_eq!(
         response.body["reason"],
@@ -206,8 +210,20 @@ fn denies_nonce_replay_end_to_end() {
     let mut state = InMemoryTrustState::new();
     let body = signed_request_value("req_conf_replay", "nonce-replay").to_string();
 
-    let first = handle_http_json_request_with_state(&body, now(), &sink, &mut state);
-    let second = handle_http_json_request_with_state(&body, now(), &sink, &mut state);
+    let first = handle_http_json_request_with_state(
+        &body,
+        now(),
+        &sink,
+        &mut state,
+        &delegated::HostContext::default(),
+    );
+    let second = handle_http_json_request_with_state(
+        &body,
+        now(),
+        &sink,
+        &mut state,
+        &delegated::HostContext::default(),
+    );
 
     assert_eq!(first.status_code, 200);
     assert_eq!(second.status_code, 403);
@@ -232,14 +248,23 @@ fn writes_allow_and_deny_audit_events_end_to_end() {
     let mut state = InMemoryTrustState::new();
 
     let allow_body = signed_request_value("req_conf_audit_allow", "nonce-audit-allow").to_string();
-    let mut deny_body = signed_request_value("req_conf_audit_deny", "nonce-audit-deny");
-    deny_body["runtime_context"]["reputation_score_bps"] = json!(1000);
-    deny_body["runtime_context"]["risk_challenge_passed"] = json!(false);
-    deny_body["runtime_context"]["extra_approval_granted"] = json!(false);
+    let mut deny_body_value = signed_request_value("req_conf_audit_deny", "nonce-audit-deny");
+    deny_body_value["action"] = json!("calendar.delete_event");
 
-    let allow = handle_http_json_request_with_state(&allow_body, now(), &sink, &mut state);
-    let deny =
-        handle_http_json_request_with_state(&deny_body.to_string(), now(), &sink, &mut state);
+    let allow = handle_http_json_request_with_state(
+        &allow_body,
+        now(),
+        &sink,
+        &mut state,
+        &delegated::HostContext::default(),
+    );
+    let deny = handle_http_json_request_with_state(
+        &deny_body_value.to_string(),
+        now(),
+        &sink,
+        &mut state,
+        &delegated::HostContext::default(),
+    );
 
     assert_eq!(allow.status_code, 200);
     assert_eq!(deny.status_code, 403);

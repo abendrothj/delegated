@@ -107,26 +107,77 @@ pub fn verify_delegation_token_signature(
     })
 }
 
+/// Produces a deterministic JSON byte representation with object keys sorted alphabetically.
+/// This is the canonical form used for signature payloads, ensuring cross-language interoperability.
+fn canonical_json(value: &serde_json::Value) -> Vec<u8> {
+    let mut buf = Vec::new();
+    write_canonical(&mut buf, value);
+    buf
+}
+
+fn write_canonical(buf: &mut Vec<u8>, value: &serde_json::Value) {
+    use serde_json::Value;
+    match value {
+        Value::Object(map) => {
+            buf.push(b'{');
+            let mut entries: Vec<(&String, &serde_json::Value)> = map.iter().collect();
+            entries.sort_by_key(|(k, _)| k.as_str());
+            for (i, (key, val)) in entries.iter().enumerate() {
+                if i > 0 {
+                    buf.push(b',');
+                }
+                buf.extend_from_slice(
+                    serde_json::to_string(key)
+                        .expect("key serialization must succeed")
+                        .as_bytes(),
+                );
+                buf.push(b':');
+                write_canonical(buf, val);
+            }
+            buf.push(b'}');
+        }
+        Value::Array(arr) => {
+            buf.push(b'[');
+            for (i, val) in arr.iter().enumerate() {
+                if i > 0 {
+                    buf.push(b',');
+                }
+                write_canonical(buf, val);
+            }
+            buf.push(b']');
+        }
+        _ => {
+            buf.extend_from_slice(
+                serde_json::to_string(value)
+                    .expect("value serialization must succeed")
+                    .as_bytes(),
+            );
+        }
+    }
+}
+
 fn canonical_identity_payload(document: &AgentIdentityDocument) -> Result<Vec<u8>, Violation> {
     let mut unsigned = document.clone();
     unsigned.signature.clear();
-    serde_json::to_vec(&unsigned).map_err(|err| {
+    let value = serde_json::to_value(&unsigned).map_err(|err| {
         Violation::new(
             STAGE,
             format!("failed to serialize identity document for signature payload: {err}"),
         )
-    })
+    })?;
+    Ok(canonical_json(&value))
 }
 
 fn canonical_token_payload(token: &DelegationToken) -> Result<Vec<u8>, Violation> {
     let mut unsigned = token.clone();
     unsigned.signature.clear();
-    serde_json::to_vec(&unsigned).map_err(|err| {
+    let value = serde_json::to_value(&unsigned).map_err(|err| {
         Violation::new(
             STAGE,
             format!("failed to serialize delegation token for signature payload: {err}"),
         )
-    })
+    })?;
+    Ok(canonical_json(&value))
 }
 
 fn decode_signature(raw: &str, field_name: &str) -> Result<Signature, Violation> {
@@ -259,13 +310,13 @@ mod tests {
             resource_constraints: Some(ResourceConstraints {
                 calendar_ids: Some(vec!["primary".to_string()]),
                 email_domain_allowlist: Some(vec!["example.com".to_string()]),
+                extra: Default::default(),
             }),
             max_spend: Some(MaxSpend {
                 amount: 0,
                 currency: "USD".to_string(),
             }),
             max_delegation_depth: Some(0),
-            approval_policy: None,
             issued_at: Utc
                 .with_ymd_and_hms(2026, 6, 1, 20, 10, 0)
                 .single()

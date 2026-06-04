@@ -1,6 +1,7 @@
 use crate::adapters::guard::{AdapterGuardConfig, enter_adapter_guard};
 use crate::audit::AuditSink;
 use crate::engine::evaluate_and_audit_with_state;
+use crate::models::HostContext;
 use crate::revocation::{RuntimeTrustConfig, TrustStateStore, trust_state_from_runtime_config};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -32,7 +33,13 @@ pub fn handle_http_json_request_with_runtime_config(
     runtime_config: &RuntimeTrustConfig,
 ) -> HttpAdapterResponse {
     let mut trust_state = trust_state_from_runtime_config(runtime_config);
-    handle_http_json_request_with_state(raw_body, now, sink, trust_state.as_mut())
+    handle_http_json_request_with_state(
+        raw_body,
+        now,
+        sink,
+        trust_state.as_mut(),
+        &HostContext::default(),
+    )
 }
 
 pub fn handle_http_json_request_with_state(
@@ -40,6 +47,7 @@ pub fn handle_http_json_request_with_state(
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
     trust_state: &mut dyn TrustStateStore,
+    host_context: &HostContext,
 ) -> HttpAdapterResponse {
     handle_http_json_request_with_state_and_guard_config(
         raw_body,
@@ -47,6 +55,7 @@ pub fn handle_http_json_request_with_state(
         sink,
         trust_state,
         &AdapterGuardConfig::default(),
+        host_context,
     )
 }
 
@@ -56,6 +65,7 @@ pub fn handle_http_json_request_with_state_and_guard_config(
     sink: &dyn AuditSink,
     trust_state: &mut dyn TrustStateStore,
     guard_config: &AdapterGuardConfig,
+    host_context: &HostContext,
 ) -> HttpAdapterResponse {
     let raw_request: Value = match serde_json::from_str(raw_body) {
         Ok(value) => value,
@@ -93,7 +103,7 @@ pub fn handle_http_json_request_with_state_and_guard_config(
         }
     };
 
-    match evaluate_and_audit_with_state(&raw_request, now, sink, trust_state) {
+    match evaluate_and_audit_with_state(&raw_request, now, sink, trust_state, host_context) {
         Ok(decision) => {
             if decision.allowed {
                 HttpAdapterResponse {
@@ -222,7 +232,6 @@ mod tests {
             resource_constraints: None,
             max_spend: None,
             max_delegation_depth: None,
-            approval_policy: None,
             issued_at: Utc
                 .with_ymd_and_hms(2026, 6, 1, 20, 10, 0)
                 .single()
@@ -249,18 +258,7 @@ mod tests {
             audience: "tool:google-calendar".to_string(),
             action: "calendar.create_event".to_string(),
             resource: None,
-            runtime_context: RuntimeContext {
-                requested_spend: None,
-                spend_currency: None,
-                delegation_depth: None,
-                target_email: None,
-                target_calendar_id: None,
-                cognitive_judge_scores_bps: Some(vec![9300, 9100]),
-                cognitive_challenge_pass_bps: Some(9200),
-                reputation_score_bps: Some(8200),
-                risk_challenge_passed: None,
-                extra_approval_granted: None,
-            },
+            runtime_context: RuntimeContext::default(),
             identity_document: Some(identity_document),
             token,
         };
@@ -351,8 +349,20 @@ mod tests {
         let mut trust_state = InMemoryTrustState::new();
         let body = valid_request_body();
 
-        let first = handle_http_json_request_with_state(&body, now(), &sink, &mut trust_state);
-        let second = handle_http_json_request_with_state(&body, now(), &sink, &mut trust_state);
+        let first = handle_http_json_request_with_state(
+            &body,
+            now(),
+            &sink,
+            &mut trust_state,
+            &HostContext::default(),
+        );
+        let second = handle_http_json_request_with_state(
+            &body,
+            now(),
+            &sink,
+            &mut trust_state,
+            &HostContext::default(),
+        );
 
         assert_eq!(first.status_code, 200);
         assert_eq!(second.status_code, 403);
@@ -393,6 +403,7 @@ mod tests {
             &sink,
             &mut state,
             &config,
+            &HostContext::default(),
         );
         let second = handle_http_json_request_with_state_and_guard_config(
             &second_body,
@@ -400,6 +411,7 @@ mod tests {
             &sink,
             &mut state,
             &config,
+            &HostContext::default(),
         );
         assert_eq!(first.status_code, 200);
         assert_eq!(second.status_code, 429);
@@ -437,6 +449,7 @@ mod tests {
                 sink_first.as_ref(),
                 &mut state,
                 &config_first,
+                &HostContext::default(),
             )
         });
         std::thread::sleep(Duration::from_millis(20));
@@ -448,6 +461,7 @@ mod tests {
             sink.as_ref(),
             &mut second_state,
             &config,
+            &HostContext::default(),
         );
         let first_response = first.join().expect("first request thread should finish");
         assert_eq!(first_response.status_code, 200);

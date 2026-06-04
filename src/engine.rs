@@ -1,5 +1,5 @@
 use crate::audit::{AuditSink, JsonlFileAuditSink, write_audit_event};
-use crate::models::{AuditEvent, Decision, PolicyCheck, RequestEnvelope, Violation};
+use crate::models::{AuditEvent, Decision, HostContext, PolicyCheck, RequestEnvelope, Violation};
 use crate::policy::{evaluate_policy, simulate_policy};
 use crate::profiles::validate_profile_compatibility;
 use crate::revocation::{RuntimeTrustConfig, TrustStateStore, trust_state_from_runtime_config};
@@ -7,7 +7,7 @@ use crate::stages::{
     enforce_revocation_and_redelegation, normalize_request, validate_identity_document_lifetime,
     validate_token_binding, validate_token_lifetime, verify_signatures,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde_json::Value;
 use std::io;
 use std::path::Path;
@@ -22,22 +22,32 @@ pub fn evaluate_request_with_runtime_config(
     runtime_config: &RuntimeTrustConfig,
 ) -> (Decision, AuditEvent) {
     let mut trust_state = trust_state_from_runtime_config(runtime_config);
-    evaluate_request_with_state(raw_request, now, trust_state.as_mut())
+    evaluate_request_with_state(
+        raw_request,
+        now,
+        trust_state.as_mut(),
+        &HostContext::default(),
+    )
 }
 
 pub fn evaluate_request_with_state(
     raw_request: &Value,
     now: DateTime<Utc>,
     trust_state: &mut dyn TrustStateStore,
+    host_context: &HostContext,
 ) -> (Decision, AuditEvent) {
+    let leeway = Duration::seconds(host_context.clock_leeway_secs as i64);
+
     let result = normalize_request(raw_request)
         .and_then(validate_profile_compatibility)
         .and_then(verify_signatures)
-        .and_then(|envelope| validate_identity_document_lifetime(envelope, now))
-        .and_then(|envelope| enforce_revocation_and_redelegation(envelope, trust_state))
-        .and_then(|envelope| validate_token_lifetime(envelope, now))
+        .and_then(|envelope| validate_identity_document_lifetime(envelope, now, leeway))
+        .and_then(|envelope| {
+            enforce_revocation_and_redelegation(envelope, trust_state, host_context)
+        })
+        .and_then(|envelope| validate_token_lifetime(envelope, now, leeway))
         .and_then(validate_token_binding)
-        .and_then(evaluate_policy);
+        .and_then(|envelope| evaluate_policy(envelope, host_context));
 
     match result {
         Ok(envelope) => {
@@ -53,9 +63,12 @@ pub fn evaluate_request_with_state(
     }
 }
 
-pub fn simulate_request_policy(raw_request: &Value) -> Result<Vec<PolicyCheck>, Violation> {
+pub fn simulate_request_policy(
+    raw_request: &Value,
+    host_context: &HostContext,
+) -> Result<Vec<PolicyCheck>, Violation> {
     let envelope = normalize_request(raw_request)?;
-    Ok(simulate_policy(&envelope))
+    Ok(simulate_policy(&envelope, host_context))
 }
 
 pub fn append_audit_event(path: impl AsRef<Path>, event: &AuditEvent) -> io::Result<()> {
@@ -78,7 +91,13 @@ pub fn evaluate_and_audit_with_runtime_config(
     runtime_config: &RuntimeTrustConfig,
 ) -> io::Result<Decision> {
     let mut trust_state = trust_state_from_runtime_config(runtime_config);
-    evaluate_and_audit_with_state(raw_request, now, sink, trust_state.as_mut())
+    evaluate_and_audit_with_state(
+        raw_request,
+        now,
+        sink,
+        trust_state.as_mut(),
+        &HostContext::default(),
+    )
 }
 
 pub fn evaluate_and_audit_with_state(
@@ -86,8 +105,10 @@ pub fn evaluate_and_audit_with_state(
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
     trust_state: &mut dyn TrustStateStore,
+    host_context: &HostContext,
 ) -> io::Result<Decision> {
-    let (decision, event) = evaluate_request_with_state(raw_request, now, trust_state);
+    let (decision, event) =
+        evaluate_request_with_state(raw_request, now, trust_state, host_context);
     write_audit_event(sink, &event)?;
     Ok(decision)
 }
@@ -237,7 +258,6 @@ mod tests {
             resource_constraints: None,
             max_spend: None,
             max_delegation_depth: None,
-            approval_policy: None,
             issued_at: Utc
                 .with_ymd_and_hms(2026, 6, 1, 20, 10, 0)
                 .single()
@@ -265,18 +285,7 @@ mod tests {
             audience: "tool:google-calendar".to_string(),
             action: "calendar.create_event".to_string(),
             resource: None,
-            runtime_context: RuntimeContext {
-                requested_spend: None,
-                spend_currency: None,
-                delegation_depth: None,
-                target_email: None,
-                target_calendar_id: None,
-                cognitive_judge_scores_bps: Some(vec![9300, 9100]),
-                cognitive_challenge_pass_bps: Some(9200),
-                reputation_score_bps: Some(8200),
-                risk_challenge_passed: None,
-                extra_approval_granted: None,
-            },
+            runtime_context: RuntimeContext::default(),
             identity_document: Some(identity_document),
             token,
         };
@@ -384,9 +393,7 @@ mod tests {
         request["audience"] = Value::String("tool:gmail".to_string());
         request["action"] = Value::String("gmail.send_message".to_string());
         request["runtime_context"] = json!({
-            "target_email": "receiver@outside.org",
-            "cognitive_judge_scores_bps": [9300, 9100],
-            "cognitive_challenge_pass_bps": 9200
+            "target_email": "receiver@outside.org"
         });
         request["delegation_token"]["resource_constraints"] = json!({
             "email_domain_allowlist": ["example.com"]
@@ -407,10 +414,7 @@ mod tests {
         let mut request = valid_request();
         request["runtime_context"] = json!({
             "requested_spend": 10,
-            "spend_currency": "USD",
-            "delegation_depth": 1,
-            "cognitive_judge_scores_bps": [9300, 9100],
-            "cognitive_challenge_pass_bps": 9200
+            "spend_currency": "USD"
         });
         request["delegation_token"]["max_spend"] = json!({
             "amount": 5,
@@ -419,22 +423,37 @@ mod tests {
         request["delegation_token"]["max_delegation_depth"] = json!(0);
         resign_token(&mut request);
 
-        let checks = simulate_request_policy(&request).expect("policy simulation should succeed");
+        let host_ctx = HostContext {
+            delegation_depth: Some(1),
+            ..HostContext::default()
+        };
+        let checks =
+            simulate_request_policy(&request, &host_ctx).expect("policy simulation should succeed");
         assert!(checks.iter().any(|check| !check.passed));
         assert!(
             checks
                 .iter()
                 .any(|check| check.name == "max_spend" && !check.passed)
         );
+        assert!(
+            checks
+                .iter()
+                .any(|check| check.name == "delegation_depth" && !check.passed)
+        );
     }
 
     #[test]
     fn denies_when_cognitive_thresholds_fail() {
-        let mut request = valid_request();
-        request["runtime_context"]["cognitive_judge_scores_bps"] = json!([6000, 5800]);
-        request["runtime_context"]["cognitive_challenge_pass_bps"] = json!(7000);
+        let request = valid_request();
+        let mut trust_state = InMemoryTrustState::new();
+        let host_ctx = HostContext {
+            cognitive_judge_scores_bps: Some(vec![6000, 5800]),
+            cognitive_challenge_pass_bps: Some(7000),
+            ..HostContext::default()
+        };
 
-        let (decision, _event) = evaluate_request(&request, now());
+        let (decision, _event) =
+            evaluate_request_with_state(&request, now(), &mut trust_state, &host_ctx);
         assert!(!decision.allowed);
         assert_eq!(decision.stage, "evaluate_policy");
         assert_eq!(
@@ -445,12 +464,17 @@ mod tests {
 
     #[test]
     fn enforces_reputation_risk_multiplier() {
-        let mut request = valid_request();
-        request["runtime_context"]["reputation_score_bps"] = json!(3000);
-        request["runtime_context"]["risk_challenge_passed"] = json!(false);
-        request["runtime_context"]["extra_approval_granted"] = json!(false);
+        let request = valid_request();
+        let mut trust_state = InMemoryTrustState::new();
+        let host_ctx = HostContext {
+            reputation_score_bps: Some(3000),
+            risk_challenge_passed: Some(false),
+            extra_approval_granted: Some(false),
+            ..HostContext::default()
+        };
 
-        let (decision, _event) = evaluate_request(&request, now());
+        let (decision, _event) =
+            evaluate_request_with_state(&request, now(), &mut trust_state, &host_ctx);
         assert!(!decision.allowed);
         assert_eq!(decision.stage, "evaluate_policy");
         assert_eq!(
@@ -487,7 +511,8 @@ mod tests {
             .to_string();
         trust_state.revoke_token(token_id);
 
-        let (decision, _event) = evaluate_request_with_state(&request, now(), &mut trust_state);
+        let (decision, _event) =
+            evaluate_request_with_state(&request, now(), &mut trust_state, &HostContext::default());
         assert!(!decision.allowed);
         assert_eq!(decision.stage, "enforce_revocation_and_redelegation");
         assert_eq!(decision.reason, "delegation token has been revoked");
@@ -498,8 +523,10 @@ mod tests {
         let request = valid_request();
         let mut trust_state = InMemoryTrustState::new();
 
-        let (first, _) = evaluate_request_with_state(&request, now(), &mut trust_state);
-        let (second, _) = evaluate_request_with_state(&request, now(), &mut trust_state);
+        let (first, _) =
+            evaluate_request_with_state(&request, now(), &mut trust_state, &HostContext::default());
+        let (second, _) =
+            evaluate_request_with_state(&request, now(), &mut trust_state, &HostContext::default());
 
         assert!(first.allowed);
         assert!(!second.allowed);
@@ -513,7 +540,8 @@ mod tests {
         let mut trust_state = InMemoryTrustState::new();
         trust_state.set_backend_available(false);
 
-        let (decision, _) = evaluate_request_with_state(&request, now(), &mut trust_state);
+        let (decision, _) =
+            evaluate_request_with_state(&request, now(), &mut trust_state, &HostContext::default());
         assert!(!decision.allowed);
         assert_eq!(decision.stage, "enforce_revocation_and_redelegation");
         assert_eq!(

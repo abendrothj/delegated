@@ -76,7 +76,7 @@ impl RuntimeTrustConfig {
 
 impl Default for RuntimeTrustConfig {
     fn default() -> Self {
-        Self::durable_default()
+        Self::in_memory()
     }
 }
 
@@ -198,6 +198,16 @@ impl TrustStateAdmin for InMemoryTrustState {
     }
 }
 
+/// File-backed trust state for CLI and single-process deployments.
+///
+/// **Limitations**: state is stored in a single JSON file and protected by a process-local
+/// advisory lock file. It is not safe for use across multiple concurrent processes or on
+/// network filesystems. For multi-process or high-throughput deployments, implement
+/// `TrustStateStore` against a shared database or distributed cache instead.
+///
+/// The lock uses a spin-wait with a 200ms total timeout; sustained concurrent writers
+/// will contend and may fail. Revocation reads acquire the lock on every request —
+/// this does not scale beyond low-volume CLI or dev use.
 #[derive(Debug, Clone)]
 pub struct FileBackedTrustState {
     path: PathBuf,

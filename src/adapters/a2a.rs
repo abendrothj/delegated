@@ -1,7 +1,7 @@
 use crate::adapters::guard::{AdapterGuardConfig, enter_adapter_guard};
 use crate::audit::AuditSink;
 use crate::engine::evaluate_and_audit_with_state;
-use crate::models::RequestEnvelope;
+use crate::models::{HostContext, RequestEnvelope};
 use crate::revocation::{RuntimeTrustConfig, TrustStateStore, trust_state_from_runtime_config};
 use crate::wire::{SHARED_CLAIMS_KIND, SharedTrustClaims};
 use chrono::{DateTime, Utc};
@@ -40,7 +40,13 @@ pub fn handle_a2a_request_with_runtime_config(
     runtime_config: &RuntimeTrustConfig,
 ) -> A2aProtocolResponse {
     let mut trust_state = trust_state_from_runtime_config(runtime_config);
-    handle_a2a_request_with_state(raw_body, now, sink, trust_state.as_mut())
+    handle_a2a_request_with_state(
+        raw_body,
+        now,
+        sink,
+        trust_state.as_mut(),
+        &HostContext::default(),
+    )
 }
 
 pub fn handle_a2a_request_with_state(
@@ -48,6 +54,7 @@ pub fn handle_a2a_request_with_state(
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
     trust_state: &mut dyn TrustStateStore,
+    host_context: &HostContext,
 ) -> A2aProtocolResponse {
     handle_a2a_request_with_state_and_guard_config(
         raw_body,
@@ -55,6 +62,7 @@ pub fn handle_a2a_request_with_state(
         sink,
         trust_state,
         &AdapterGuardConfig::default(),
+        host_context,
     )
 }
 
@@ -64,6 +72,7 @@ pub fn handle_a2a_request_with_state_and_guard_config(
     sink: &dyn AuditSink,
     trust_state: &mut dyn TrustStateStore,
     guard_config: &AdapterGuardConfig,
+    host_context: &HostContext,
 ) -> A2aProtocolResponse {
     let request: A2aProtocolRequest = match serde_json::from_str(raw_body) {
         Ok(value) => value,
@@ -122,7 +131,7 @@ pub fn handle_a2a_request_with_state_and_guard_config(
         }
     };
 
-    match evaluate_and_audit_with_state(&raw_envelope, now, sink, trust_state) {
+    match evaluate_and_audit_with_state(&raw_envelope, now, sink, trust_state, host_context) {
         Ok(decision) if decision.allowed => A2aProtocolResponse {
             message_id: request.message_id,
             status: "ok".to_string(),
@@ -241,7 +250,6 @@ mod tests {
             resource_constraints: None,
             max_spend: None,
             max_delegation_depth: Some(0),
-            approval_policy: None,
             issued_at: Utc
                 .with_ymd_and_hms(2026, 6, 1, 20, 10, 0)
                 .single()
@@ -267,18 +275,7 @@ mod tests {
             audience: "tool:google-calendar".to_string(),
             action: "calendar.create_event".to_string(),
             resource: None,
-            runtime_context: RuntimeContext {
-                requested_spend: None,
-                spend_currency: None,
-                delegation_depth: Some(0),
-                target_email: None,
-                target_calendar_id: None,
-                cognitive_judge_scores_bps: Some(vec![9200, 9100]),
-                cognitive_challenge_pass_bps: Some(9100),
-                reputation_score_bps: Some(8200),
-                risk_challenge_passed: None,
-                extra_approval_granted: None,
-            },
+            runtime_context: RuntimeContext::default(),
             identity_document: Some(identity),
             token,
         };
@@ -340,8 +337,20 @@ mod tests {
         let sink = JsonlFileAuditSink::new(sink_path.clone());
         let mut state = InMemoryTrustState::new();
         let serialized = serde_json::to_string(&req).expect("serialization should work");
-        let first = handle_a2a_request_with_state(&serialized, now(), &sink, &mut state);
-        let second = handle_a2a_request_with_state(&serialized, now(), &sink, &mut state);
+        let first = handle_a2a_request_with_state(
+            &serialized,
+            now(),
+            &sink,
+            &mut state,
+            &HostContext::default(),
+        );
+        let second = handle_a2a_request_with_state(
+            &serialized,
+            now(),
+            &sink,
+            &mut state,
+            &HostContext::default(),
+        );
         assert_eq!(first.status, "ok");
         assert_eq!(second.status, "denied");
         assert_eq!(
@@ -393,6 +402,7 @@ mod tests {
             &sink,
             &mut state,
             &config,
+            &HostContext::default(),
         );
         let second = handle_a2a_request_with_state_and_guard_config(
             &serde_json::to_string(&second_req).expect("serialization should work"),
@@ -400,6 +410,7 @@ mod tests {
             &sink,
             &mut state,
             &config,
+            &HostContext::default(),
         );
         assert_eq!(first.status, "ok");
         assert_eq!(second.status, "denied");
