@@ -1,6 +1,7 @@
 use crate::audit::{AuditSink, JsonlFileAuditSink, write_audit_event};
 use crate::models::{AuditEvent, Decision, HostContext, PolicyCheck, RequestEnvelope, Violation};
 use crate::policy::{evaluate_policy, simulate_policy};
+use crate::policy_trait::{DefaultPolicy, Policy};
 use crate::profiles::validate_profile_compatibility;
 use crate::revocation::{RuntimeTrustConfig, TrustStateStore, trust_state_from_runtime_config};
 use crate::stages::{
@@ -36,6 +37,16 @@ pub fn evaluate_request_with_state(
     trust_state: &mut dyn TrustStateStore,
     host_context: &HostContext,
 ) -> (Decision, AuditEvent) {
+    evaluate_request_with_policy(raw_request, now, trust_state, host_context, &DefaultPolicy)
+}
+
+pub fn evaluate_request_with_policy(
+    raw_request: &Value,
+    now: DateTime<Utc>,
+    trust_state: &mut dyn TrustStateStore,
+    host_context: &HostContext,
+    policy: &dyn Policy,
+) -> (Decision, AuditEvent) {
     let leeway = Duration::seconds(host_context.clock_leeway_secs as i64);
 
     let result = normalize_request(raw_request)
@@ -47,7 +58,45 @@ pub fn evaluate_request_with_state(
         })
         .and_then(|envelope| validate_token_lifetime(envelope, now, leeway))
         .and_then(validate_token_binding)
-        .and_then(|envelope| evaluate_policy(envelope, host_context));
+        .and_then(|envelope| apply_policy_checks(envelope, host_context, policy));
+
+    match result {
+        Ok(envelope) => {
+            let decision = Decision::allow("evaluate_policy", "request authorized");
+            let event = from_envelope(envelope, &decision, now);
+            (decision, event)
+        }
+        Err(violation) => {
+            let decision = Decision::deny(violation.stage, violation.reason.clone());
+            let event = from_raw(raw_request, &violation, now);
+            (decision, event)
+        }
+    }
+}
+
+#[cfg(feature = "oidc-bridge")]
+pub fn evaluate_request_with_verifier(
+    raw_request: &Value,
+    now: DateTime<Utc>,
+    trust_state: &mut dyn TrustStateStore,
+    host_context: &HostContext,
+    verifier: Option<&dyn crate::identity_verifier::IdentityVerifier>,
+    policy: &dyn Policy,
+) -> (Decision, AuditEvent) {
+    use crate::stages::verify_signatures_with_verifier;
+
+    let leeway = Duration::seconds(host_context.clock_leeway_secs as i64);
+
+    let result = normalize_request(raw_request)
+        .and_then(validate_profile_compatibility)
+        .and_then(|envelope| verify_signatures_with_verifier(envelope, verifier))
+        .and_then(|envelope| validate_identity_document_lifetime(envelope, now, leeway))
+        .and_then(|envelope| {
+            enforce_revocation_and_redelegation(envelope, trust_state, host_context)
+        })
+        .and_then(|envelope| validate_token_lifetime(envelope, now, leeway))
+        .and_then(validate_token_binding)
+        .and_then(|envelope| apply_policy_checks(envelope, host_context, policy));
 
     match result {
         Ok(envelope) => {
@@ -67,8 +116,16 @@ pub fn simulate_request_policy(
     raw_request: &Value,
     host_context: &HostContext,
 ) -> Result<Vec<PolicyCheck>, Violation> {
+    simulate_request_policy_with_policy(raw_request, host_context, &DefaultPolicy)
+}
+
+pub fn simulate_request_policy_with_policy(
+    raw_request: &Value,
+    host_context: &HostContext,
+    policy: &dyn Policy,
+) -> Result<Vec<PolicyCheck>, Violation> {
     let envelope = normalize_request(raw_request)?;
-    Ok(simulate_policy(&envelope, host_context))
+    Ok(policy.evaluate(&envelope, host_context))
 }
 
 pub fn append_audit_event(path: impl AsRef<Path>, event: &AuditEvent) -> io::Result<()> {
@@ -107,13 +164,40 @@ pub fn evaluate_and_audit_with_state(
     trust_state: &mut dyn TrustStateStore,
     host_context: &HostContext,
 ) -> io::Result<Decision> {
+    evaluate_and_audit_with_policy(raw_request, now, sink, trust_state, host_context, &DefaultPolicy)
+}
+
+pub fn evaluate_and_audit_with_policy(
+    raw_request: &Value,
+    now: DateTime<Utc>,
+    sink: &dyn AuditSink,
+    trust_state: &mut dyn TrustStateStore,
+    host_context: &HostContext,
+    policy: &dyn Policy,
+) -> io::Result<Decision> {
     let (decision, event) =
-        evaluate_request_with_state(raw_request, now, trust_state, host_context);
+        evaluate_request_with_policy(raw_request, now, trust_state, host_context, policy);
     write_audit_event(sink, &event)?;
     Ok(decision)
 }
 
-fn from_envelope(envelope: RequestEnvelope, decision: &Decision, now: DateTime<Utc>) -> AuditEvent {
+pub(crate) fn apply_policy_checks(
+    envelope: RequestEnvelope,
+    host_context: &HostContext,
+    policy: &dyn Policy,
+) -> Result<RequestEnvelope, Violation> {
+    let checks = policy.evaluate(&envelope, host_context);
+    if let Some(failure) = checks.iter().find(|c| !c.passed) {
+        return Err(Violation::new("evaluate_policy", failure.reason.clone()));
+    }
+    Ok(envelope)
+}
+
+pub(crate) fn from_envelope(
+    envelope: RequestEnvelope,
+    decision: &Decision,
+    now: DateTime<Utc>,
+) -> AuditEvent {
     AuditEvent {
         occurred_at: now,
         allowed: decision.allowed,
@@ -128,7 +212,11 @@ fn from_envelope(envelope: RequestEnvelope, decision: &Decision, now: DateTime<U
     }
 }
 
-fn from_raw(raw_request: &Value, violation: &Violation, now: DateTime<Utc>) -> AuditEvent {
+pub(crate) fn from_raw(
+    raw_request: &Value,
+    violation: &Violation,
+    now: DateTime<Utc>,
+) -> AuditEvent {
     let request_id = extract_string(raw_request, &["request_id"]);
     let agent_id = extract_string(raw_request, &["agent_id"]);
     let delegator_id = extract_string(raw_request, &["delegator_id"]);
@@ -618,5 +706,67 @@ mod tests {
         assert_eq!(contents.lines().count(), 2);
         assert!(contents.contains("\"allowed\":true"));
         assert!(contents.contains("\"allowed\":false"));
+    }
+
+    #[test]
+    fn custom_policy_can_deny_otherwise_valid_request() {
+        use crate::models::PolicyCheck;
+
+        struct AlwaysDenyPolicy;
+        impl Policy for AlwaysDenyPolicy {
+            fn evaluate(
+                &self,
+                _envelope: &RequestEnvelope,
+                _host_context: &HostContext,
+            ) -> Vec<PolicyCheck> {
+                vec![PolicyCheck {
+                    name: "custom_deny".to_string(),
+                    passed: false,
+                    reason: "denied by custom policy".to_string(),
+                }]
+            }
+        }
+
+        let mut trust_state = InMemoryTrustState::new();
+        let (decision, _) = evaluate_request_with_policy(
+            &valid_request(),
+            now(),
+            &mut trust_state,
+            &HostContext::default(),
+            &AlwaysDenyPolicy,
+        );
+        assert!(!decision.allowed);
+        assert_eq!(decision.reason, "denied by custom policy");
+    }
+
+    #[test]
+    fn simulate_with_custom_policy_returns_custom_checks() {
+        use crate::models::PolicyCheck;
+
+        struct DoubleCheckPolicy;
+        impl Policy for DoubleCheckPolicy {
+            fn evaluate(
+                &self,
+                envelope: &RequestEnvelope,
+                host_context: &HostContext,
+            ) -> Vec<PolicyCheck> {
+                let mut checks = DefaultPolicy.evaluate(envelope, host_context);
+                checks.push(PolicyCheck {
+                    name: "custom_check".to_string(),
+                    passed: true,
+                    reason: "custom check passed".to_string(),
+                });
+                checks
+            }
+        }
+
+        let checks = simulate_request_policy_with_policy(
+            &valid_request(),
+            &HostContext::default(),
+            &DoubleCheckPolicy,
+        )
+        .expect("simulation should succeed");
+        assert!(checks.iter().any(|c| c.name == "custom_check"));
+        assert!(checks.iter().any(|c| c.name == "allowed_actions"));
     }
 }

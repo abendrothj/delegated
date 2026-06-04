@@ -5,7 +5,7 @@ use std::fs::OpenOptions;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
-pub trait AuditSink {
+pub trait AuditSink: Send + Sync {
     fn write_event(&self, event: &AuditEvent) -> io::Result<()>;
 }
 

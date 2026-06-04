@@ -116,6 +116,33 @@ pub fn verify_signatures(envelope: RequestEnvelope) -> Result<RequestEnvelope, V
     Ok(envelope)
 }
 
+#[cfg(feature = "oidc-bridge")]
+pub fn verify_signatures_with_verifier(
+    envelope: RequestEnvelope,
+    verifier: Option<&dyn crate::identity_verifier::IdentityVerifier>,
+) -> Result<RequestEnvelope, Violation> {
+    let identity_document = envelope.identity_document.as_ref().ok_or_else(|| {
+        Violation::new(
+            "verify_signatures",
+            "identity_document is required for signature verification",
+        )
+    })?;
+
+    match verifier {
+        Some(v) => {
+            v.verify(identity_document)?;
+            // Even with OIDC verification, still verify the delegation token
+            // signature against the public key in the identity document.
+            crate::crypto::verify_delegation_token_signature(
+                &envelope.token,
+                identity_document,
+            )?;
+            Ok(envelope)
+        }
+        None => verify_signatures(envelope),
+    }
+}
+
 pub fn enforce_revocation_and_redelegation(
     envelope: RequestEnvelope,
     state: &mut dyn TrustStateStore,

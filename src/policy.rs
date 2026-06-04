@@ -30,7 +30,7 @@ pub fn simulate_policy(envelope: &RequestEnvelope, host_context: &HostContext) -
     checks
 }
 
-fn check_cognitive_gate(host_context: &HostContext) -> PolicyCheck {
+pub fn check_cognitive_gate(host_context: &HostContext) -> PolicyCheck {
     let Some(scores) = host_context.cognitive_judge_scores_bps.as_ref() else {
         // Cognitive verification is not configured; gate is skipped.
         return pass(
@@ -73,7 +73,7 @@ fn check_cognitive_gate(host_context: &HostContext) -> PolicyCheck {
     )
 }
 
-fn check_reputation_risk_multiplier(host_context: &HostContext) -> PolicyCheck {
+pub fn check_reputation_risk_multiplier(host_context: &HostContext) -> PolicyCheck {
     let Some(reputation_score) = host_context.reputation_score_bps else {
         return pass(
             "reputation_risk_multiplier",
@@ -103,7 +103,7 @@ fn check_reputation_risk_multiplier(host_context: &HostContext) -> PolicyCheck {
     )
 }
 
-fn check_allowed_action(envelope: &RequestEnvelope) -> PolicyCheck {
+pub fn check_allowed_action(envelope: &RequestEnvelope) -> PolicyCheck {
     let passed = envelope.token.allowed_actions.contains(&envelope.action);
     if passed {
         return PolicyCheck {
@@ -120,7 +120,7 @@ fn check_allowed_action(envelope: &RequestEnvelope) -> PolicyCheck {
     }
 }
 
-fn check_calendar_constraint(envelope: &RequestEnvelope) -> PolicyCheck {
+pub fn check_calendar_constraint(envelope: &RequestEnvelope) -> PolicyCheck {
     let Some(constraints) = envelope.token.resource_constraints.as_ref() else {
         return pass("calendar_constraint", "no calendar constraint configured");
     };
@@ -147,7 +147,7 @@ fn check_calendar_constraint(envelope: &RequestEnvelope) -> PolicyCheck {
     )
 }
 
-fn check_email_domain_allowlist(envelope: &RequestEnvelope) -> PolicyCheck {
+pub fn check_email_domain_allowlist(envelope: &RequestEnvelope) -> PolicyCheck {
     let Some(constraints) = envelope.token.resource_constraints.as_ref() else {
         return pass("email_domain_allowlist", "no email allowlist configured");
     };
@@ -184,7 +184,7 @@ fn check_email_domain_allowlist(envelope: &RequestEnvelope) -> PolicyCheck {
     )
 }
 
-fn check_max_spend(envelope: &RequestEnvelope) -> PolicyCheck {
+pub fn check_max_spend(envelope: &RequestEnvelope) -> PolicyCheck {
     let Some(max_spend) = envelope.token.max_spend.as_ref() else {
         return pass("max_spend", "no max spend configured");
     };
@@ -202,7 +202,7 @@ fn check_max_spend(envelope: &RequestEnvelope) -> PolicyCheck {
     fail("max_spend", "requested spend exceeds token max_spend")
 }
 
-fn check_delegation_depth(envelope: &RequestEnvelope, host_context: &HostContext) -> PolicyCheck {
+pub fn check_delegation_depth(envelope: &RequestEnvelope, host_context: &HostContext) -> PolicyCheck {
     let Some(max_depth) = envelope.token.max_delegation_depth else {
         return pass("delegation_depth", "no max delegation depth configured");
     };
@@ -224,6 +224,25 @@ fn check_delegation_depth(envelope: &RequestEnvelope, host_context: &HostContext
         "delegation_depth",
         "delegation depth exceeds token max_delegation_depth",
     )
+}
+
+/// Evaluates the `extra` map in `resource_constraints` using a caller-supplied closure.
+/// The default policy passes all unknown extra keys; supply your own closure to enforce them.
+///
+/// Returns one `PolicyCheck` per entry in `extra`. Returns an empty `Vec` when there are
+/// no `resource_constraints` or the `extra` map is empty.
+pub fn check_extra_constraints(
+    envelope: &RequestEnvelope,
+    evaluator: &dyn Fn(&str, &[String], &RequestEnvelope) -> PolicyCheck,
+) -> Vec<PolicyCheck> {
+    let Some(constraints) = envelope.token.resource_constraints.as_ref() else {
+        return Vec::new();
+    };
+    constraints
+        .extra
+        .iter()
+        .map(|(key, values)| evaluator(key, values, envelope))
+        .collect()
 }
 
 fn pass(name: &str, reason: &str) -> PolicyCheck {
