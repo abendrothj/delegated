@@ -41,7 +41,9 @@ pub use delegation_ux::{
     render_cli_grant_summary, to_approval_callback,
 };
 pub use discovery::{
-    DiscoveryService, IssuerMetadata, JwkRecord, JwksDocument, build_jwks_document,
+    DISCOVERY_ISSUER_PATH, DISCOVERY_JWKS_PATH, DISCOVERY_REGISTRY_PREFIX,
+    DISCOVERY_RESOLVE_PREFIX, DiscoveryHttpRequest, DiscoveryHttpResponse, DiscoveryService,
+    IssuerMetadata, JwkRecord, JwksDocument, build_jwks_document, handle_discovery_http_request,
 };
 pub use engine::{
     append_audit_event, evaluate_and_audit, evaluate_and_audit_with_runtime_config,
