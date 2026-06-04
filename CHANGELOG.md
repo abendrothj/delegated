@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] — 2026-06-04
+
+### Metadata
+
+- Added explicit crate documentation metadata (`documentation = "https://docs.rs/crate/delegated/latest"`) so crates.io resolves docs consistently.
+
 ## [0.1.0] — 2026-06-04
 
 Initial public release.
