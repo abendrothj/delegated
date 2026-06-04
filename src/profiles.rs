@@ -1,4 +1,4 @@
-use crate::models::{RequestEnvelope, TrustProfile, Violation};
+use crate::models::{AgentIdentityDocument, RequestEnvelope, TrustProfile, Violation};
 
 pub fn validate_profile_compatibility(
     envelope: RequestEnvelope,
@@ -25,6 +25,13 @@ pub fn validate_profile_compatibility(
                     "OIDC profile requires HTTPS issuer",
                 ));
             }
+            if identity.subject.trim().is_empty() {
+                return Err(Violation::new(
+                    "validate_profile_compatibility",
+                    "OIDC profile requires non-empty identity_document.subject",
+                ));
+            }
+            ensure_delegation_auth_method(identity)?;
             Ok(envelope)
         }
         TrustProfile::Spiffe => {
@@ -40,9 +47,39 @@ pub fn validate_profile_compatibility(
                     "SPIFFE profile requires identity_document.subject with spiffe:// prefix",
                 ));
             }
+            ensure_delegation_auth_method(identity)?;
+            ensure_supported_transport(identity)?;
             Ok(envelope)
         }
     }
+}
+
+fn ensure_delegation_auth_method(identity: &AgentIdentityDocument) -> Result<(), Violation> {
+    if identity
+        .supported_auth_methods
+        .iter()
+        .any(|method| method == "delegation_token")
+    {
+        return Ok(());
+    }
+    Err(Violation::new(
+        "validate_profile_compatibility",
+        "profile requires identity_document.supported_auth_methods to include delegation_token",
+    ))
+}
+
+fn ensure_supported_transport(identity: &AgentIdentityDocument) -> Result<(), Violation> {
+    if identity
+        .supported_protocols
+        .iter()
+        .any(|protocol| matches!(protocol.as_str(), "http" | "mcp" | "a2a"))
+    {
+        return Ok(());
+    }
+    Err(Violation::new(
+        "validate_profile_compatibility",
+        "SPIFFE profile requires at least one supported protocol from http|mcp|a2a",
+    ))
 }
 
 #[cfg(test)]
@@ -148,5 +185,39 @@ mod tests {
         );
         let error = validate_profile_compatibility(envelope).expect_err("should be denied");
         assert_eq!(error.stage, "validate_profile_compatibility");
+    }
+
+    #[test]
+    fn rejects_oidc_profile_without_delegation_auth_method() {
+        let mut envelope = request(TrustProfile::Oidc, "oidc", "service-account-subject");
+        envelope
+            .identity_document
+            .as_mut()
+            .expect("identity")
+            .supported_auth_methods = vec!["oauth_bearer".to_string()];
+        let error = validate_profile_compatibility(envelope).expect_err("should be denied");
+        assert_eq!(
+            error.reason,
+            "profile requires identity_document.supported_auth_methods to include delegation_token"
+        );
+    }
+
+    #[test]
+    fn rejects_spiffe_profile_without_supported_transport() {
+        let mut envelope = request(
+            TrustProfile::Spiffe,
+            "spiffe",
+            "spiffe://example.ai/agents/scheduler",
+        );
+        envelope
+            .identity_document
+            .as_mut()
+            .expect("identity")
+            .supported_protocols = vec!["smtp".to_string()];
+        let error = validate_profile_compatibility(envelope).expect_err("should be denied");
+        assert_eq!(
+            error.reason,
+            "SPIFFE profile requires at least one supported protocol from http|mcp|a2a"
+        );
     }
 }
