@@ -64,7 +64,11 @@ pub async fn evaluate_request_with_async_state_and_policy(
     match result {
         Ok(envelope) => {
             #[cfg(feature = "tracing")]
-            tracing::info!(allowed = true, stage = "evaluate_policy", "trust decision: allowed");
+            tracing::info!(
+                allowed = true,
+                stage = "evaluate_policy",
+                "trust decision: allowed"
+            );
             #[cfg(feature = "metrics")]
             {
                 metrics::counter!("delegated_requests_total", "allowed" => "true").increment(1);
@@ -202,7 +206,9 @@ mod tests {
                 kid: "key-2026-01".to_string(),
                 kty: "OKP".to_string(),
                 crv: Some(TOKEN_SIGNATURE_ALG_ED25519.to_string()),
-                x: Some(Base64UrlUnpadded::encode_string(&key.verifying_key().to_bytes())),
+                x: Some(Base64UrlUnpadded::encode_string(
+                    &key.verifying_key().to_bytes(),
+                )),
             }],
             supported_protocols: vec!["http".to_string()],
             supported_auth_methods: vec!["delegation_token".to_string()],
@@ -273,9 +279,13 @@ mod tests {
     #[tokio::test]
     async fn async_allows_valid_request() {
         let state = InMemoryAsyncTrustState::new();
-        let (decision, _) =
-            evaluate_request_with_async_state(&valid_request(), now(), &state, &HostContext::default())
-                .await;
+        let (decision, _) = evaluate_request_with_async_state(
+            &valid_request(),
+            now(),
+            &state,
+            &HostContext::default(),
+        )
+        .await;
         assert!(decision.allowed, "unexpected deny: {}", decision.reason);
     }
 
@@ -299,11 +309,7 @@ mod tests {
     async fn async_custom_policy_can_deny() {
         struct AlwaysDenyPolicy;
         impl Policy for AlwaysDenyPolicy {
-            fn evaluate(
-                &self,
-                _: &RequestEnvelope,
-                _: &HostContext,
-            ) -> Vec<PolicyCheck> {
+            fn evaluate(&self, _: &RequestEnvelope, _: &HostContext) -> Vec<PolicyCheck> {
                 vec![PolicyCheck {
                     name: "custom_deny".to_string(),
                     passed: false,

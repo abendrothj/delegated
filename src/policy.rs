@@ -17,17 +17,15 @@ pub fn evaluate_policy(
 }
 
 pub fn simulate_policy(envelope: &RequestEnvelope, host_context: &HostContext) -> Vec<PolicyCheck> {
-    let mut checks = Vec::new();
-
-    checks.push(check_allowed_action(envelope));
-    checks.push(check_cognitive_gate(host_context));
-    checks.push(check_reputation_risk_multiplier(host_context));
-    checks.push(check_calendar_constraint(envelope));
-    checks.push(check_email_domain_allowlist(envelope));
-    checks.push(check_max_spend(envelope));
-    checks.push(check_delegation_depth(envelope, host_context));
-
-    checks
+    vec![
+        check_allowed_action(envelope),
+        check_cognitive_gate(host_context),
+        check_reputation_risk_multiplier(host_context),
+        check_calendar_constraint(envelope),
+        check_email_domain_allowlist(envelope),
+        check_max_spend(envelope),
+        check_delegation_depth(envelope, host_context),
+    ]
 }
 
 pub fn check_cognitive_gate(host_context: &HostContext) -> PolicyCheck {
@@ -202,7 +200,10 @@ pub fn check_max_spend(envelope: &RequestEnvelope) -> PolicyCheck {
     fail("max_spend", "requested spend exceeds token max_spend")
 }
 
-pub fn check_delegation_depth(envelope: &RequestEnvelope, host_context: &HostContext) -> PolicyCheck {
+pub fn check_delegation_depth(
+    envelope: &RequestEnvelope,
+    host_context: &HostContext,
+) -> PolicyCheck {
     let Some(max_depth) = envelope.token.max_delegation_depth else {
         return pass("delegation_depth", "no max delegation depth configured");
     };

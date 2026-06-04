@@ -8,10 +8,10 @@
 //!       -H "Content-Type: application/json" \
 //!       -d "$(cargo run --example build_request 2>/dev/null)" | jq .
 
-use delegated::adapters::axum_layer::{DelegatedLayer, DelegatedLayerBuilder};
-use delegated::revocation_async::InMemoryAsyncTrustState;
-use delegated::JsonlFileAuditSink;
 use axum::{Json, Router, routing::post};
+use delegated::JsonlFileAuditSink;
+use delegated::adapters::axum_layer::DelegatedLayerBuilder;
+use delegated::revocation_async::InMemoryAsyncTrustState;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -22,7 +22,9 @@ async fn main() {
         std::env::temp_dir().join("delegated_axum_example.jsonl"),
     ));
 
-    let delegated_layer = DelegatedLayerBuilder::new(trust_state, audit_sink).build();
+    let delegated_layer = DelegatedLayerBuilder::new(trust_state, audit_sink)
+        .with_max_body_bytes(1024 * 1024)
+        .build();
 
     let app = Router::new()
         .route("/calendar", post(handle_calendar))
@@ -33,9 +35,7 @@ async fn main() {
         .expect("failed to bind to port 3000");
 
     println!("delegated axum example listening on http://0.0.0.0:3000");
-    axum::serve(listener, app)
-        .await
-        .expect("server failed");
+    axum::serve(listener, app).await.expect("server failed");
 }
 
 async fn handle_calendar(Json(body): Json<Value>) -> Json<Value> {

@@ -62,7 +62,9 @@ pub struct InMemoryAsyncTrustState {
 
 impl InMemoryAsyncTrustState {
     pub fn new() -> Self {
-        Self { inner: InMemoryTrustState::new() }
+        Self {
+            inner: InMemoryTrustState::new(),
+        }
     }
 }
 
@@ -187,15 +189,34 @@ mod tests {
     async fn async_bulk_revoke_and_clear_emergency_list() {
         let state = InMemoryAsyncTrustState::new();
         let ids = ["dlg_x", "dlg_y"];
-        let count = state.revoke_tokens(&ids).await.expect("bulk revoke should succeed");
+        let count = state
+            .revoke_tokens(&ids)
+            .await
+            .expect("bulk revoke should succeed");
         assert_eq!(count, 2);
         for id in &ids {
-            assert!(state.is_token_revoked(id).await.expect("query should succeed"));
+            assert!(
+                state
+                    .is_token_revoked(id)
+                    .await
+                    .expect("query should succeed")
+            );
         }
 
-        state.emergency_deny_agent("agent:bad").await.expect("deny should succeed");
-        let cleared = state.clear_emergency_deny_list().await.expect("clear should succeed");
+        state
+            .emergency_deny_agent("agent:bad")
+            .await
+            .expect("deny should succeed");
+        let cleared = state
+            .clear_emergency_deny_list()
+            .await
+            .expect("clear should succeed");
         assert_eq!(cleared, 1);
-        assert!(!state.is_agent_emergency_denied("agent:bad").await.expect("query should succeed"));
+        assert!(
+            !state
+                .is_agent_emergency_denied("agent:bad")
+                .await
+                .expect("query should succeed")
+        );
     }
 }

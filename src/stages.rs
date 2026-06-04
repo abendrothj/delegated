@@ -133,10 +133,7 @@ pub fn verify_signatures_with_verifier(
             v.verify(identity_document)?;
             // Even with OIDC verification, still verify the delegation token
             // signature against the public key in the identity document.
-            crate::crypto::verify_delegation_token_signature(
-                &envelope.token,
-                identity_document,
-            )?;
+            crate::crypto::verify_delegation_token_signature(&envelope.token, identity_document)?;
             Ok(envelope)
         }
         None => verify_signatures(envelope),

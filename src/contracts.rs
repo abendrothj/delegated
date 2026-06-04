@@ -209,9 +209,7 @@ fn validate_spec_version(field_name: &str, value: &str) -> Result<(), Violation>
         let supported = SUPPORTED_SPEC_VERSIONS.join(", ");
         return Err(Violation::new(
             "normalize_request",
-            format!(
-                "{field_name} specifies unsupported version {value:?}; supported: {supported}"
-            ),
+            format!("{field_name} specifies unsupported version {value:?}; supported: {supported}"),
         ));
     }
     Ok(())
@@ -253,13 +251,13 @@ fn validate_non_empty_vec(field_name: &str, values: &[String]) -> Result<(), Vio
 }
 
 fn validate_runtime_context(envelope: &RequestEnvelope) -> Result<(), Violation> {
-    if let Some(requested_spend) = envelope.runtime_context.requested_spend {
-        if requested_spend < 0 {
-            return Err(Violation::new(
-                "normalize_request",
-                "request.runtime_context.requested_spend must be zero or positive",
-            ));
-        }
+    if let Some(requested_spend) = envelope.runtime_context.requested_spend
+        && requested_spend < 0
+    {
+        return Err(Violation::new(
+            "normalize_request",
+            "request.runtime_context.requested_spend must be zero or positive",
+        ));
     }
     if let Some(currency) = envelope.runtime_context.spend_currency.as_ref() {
         validate_non_empty("request.runtime_context.spend_currency", currency)?;

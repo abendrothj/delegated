@@ -345,7 +345,11 @@ mod tests {
             &HostContext::default(),
         )
         .await;
-        assert!(response.error.is_none(), "unexpected error: {:?}", response.error);
+        assert!(
+            response.error.is_none(),
+            "unexpected error: {:?}",
+            response.error
+        );
         std::fs::remove_file(path).expect("temporary audit file should be removable");
     }
 

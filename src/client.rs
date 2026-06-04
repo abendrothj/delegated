@@ -1,7 +1,7 @@
 use crate::adapters::a2a::{A2aProtocolRequest, A2aProtocolResponse};
 use crate::adapters::mcp::McpJsonRpcResponse;
 use crate::models::RequestEnvelope;
-use crate::wire::{SharedTrustClaims, SHARED_CLAIMS_KIND};
+use crate::wire::{SHARED_CLAIMS_KIND, SharedTrustClaims};
 use serde_json::{Value, json};
 use std::fmt;
 
@@ -32,13 +32,22 @@ impl std::error::Error for ClientError {}
 
 impl ClientError {
     fn network(e: impl fmt::Display) -> Self {
-        Self { kind: ClientErrorKind::Network, message: e.to_string() }
+        Self {
+            kind: ClientErrorKind::Network,
+            message: e.to_string(),
+        }
     }
     fn serialization(e: impl fmt::Display) -> Self {
-        Self { kind: ClientErrorKind::Serialization, message: e.to_string() }
+        Self {
+            kind: ClientErrorKind::Serialization,
+            message: e.to_string(),
+        }
     }
     fn invalid_response(e: impl fmt::Display) -> Self {
-        Self { kind: ClientErrorKind::InvalidResponse, message: e.to_string() }
+        Self {
+            kind: ClientErrorKind::InvalidResponse,
+            message: e.to_string(),
+        }
     }
 }
 
@@ -138,7 +147,9 @@ impl Default for DelegatedClient {
 
 impl DelegatedClient {
     pub fn new() -> Self {
-        Self { inner: reqwest::Client::new() }
+        Self {
+            inner: reqwest::Client::new(),
+        }
     }
 
     /// Use an existing `reqwest::Client`, useful for sharing connection pools or
@@ -169,7 +180,10 @@ impl DelegatedClient {
 
         Ok(HttpTrustResponse {
             status_code,
-            allowed: body.get("allowed").and_then(Value::as_bool).unwrap_or(false),
+            allowed: body
+                .get("allowed")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
             stage: body
                 .get("stage")
                 .and_then(Value::as_str)
@@ -211,13 +225,9 @@ impl DelegatedClient {
             token: envelope.token.clone(),
         };
 
-        let trust_value = serde_json::to_value(&claims)
-            .map_err(|e| ClientError::serialization(e))?;
+        let trust_value = serde_json::to_value(&claims).map_err(ClientError::serialization)?;
 
-        let mut params = extra_params
-            .as_object()
-            .cloned()
-            .unwrap_or_default();
+        let mut params = extra_params.as_object().cloned().unwrap_or_default();
         params.insert("_trust".to_string(), trust_value);
 
         let body = json!({
@@ -239,7 +249,10 @@ impl DelegatedClient {
         let response: McpJsonRpcResponse =
             resp.json().await.map_err(ClientError::invalid_response)?;
 
-        Ok(McpTrustResponse { status_code, response })
+        Ok(McpTrustResponse {
+            status_code,
+            response,
+        })
     }
 
     /// Send a trust request to a service running the delegated A2A adapter.
@@ -289,6 +302,9 @@ impl DelegatedClient {
         let response: A2aProtocolResponse =
             resp.json().await.map_err(ClientError::invalid_response)?;
 
-        Ok(A2aTrustResponse { status_code, response })
+        Ok(A2aTrustResponse {
+            status_code,
+            response,
+        })
     }
 }

@@ -49,6 +49,7 @@ pub use adapters::mcp::{
     handle_mcp_jsonrpc_request_with_state, handle_mcp_jsonrpc_request_with_state_and_guard_config,
 };
 pub use audit::{AuditQuery, AuditReader, AuditSink, JsonlFileAuditSink};
+pub use contracts::{SPEC_VERSION_CURRENT, SUPPORTED_SPEC_VERSIONS};
 pub use control_plane::{
     ApprovalOperation, OperationalReport, PolicySimulationResult, RevocationOperation,
     build_operational_report, emergency_deny_agent, export_audit_events, record_approval_decision,
@@ -75,7 +76,6 @@ pub use engine::{
     evaluate_request_with_state, simulate_request_policy, simulate_request_policy_with_policy,
 };
 pub use host_context::{HostContextBuilder, HostContextProvider, StaticHostContextProvider};
-pub use contracts::{SPEC_VERSION_CURRENT, SUPPORTED_SPEC_VERSIONS};
 pub use issuance::{
     AgentIdentityDocumentBuilder, DelegationTokenBuilder, IssuanceError, RequestEnvelopeBuilder,
 };
@@ -83,9 +83,9 @@ pub use models::{
     AuditEvent, Decision, HostContext, PolicyCheck, RequestEnvelope, TrustProfile, Violation,
 };
 pub use policy::{
-    check_allowed_action, check_calendar_constraint, check_cognitive_gate,
-    check_delegation_depth, check_email_domain_allowlist, check_extra_constraints,
-    check_max_spend, check_reputation_risk_multiplier,
+    check_allowed_action, check_calendar_constraint, check_cognitive_gate, check_delegation_depth,
+    check_email_domain_allowlist, check_extra_constraints, check_max_spend,
+    check_reputation_risk_multiplier,
 };
 pub use policy_trait::{DefaultPolicy, Policy};
 pub use profiles::validate_profile_compatibility;

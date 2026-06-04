@@ -5,9 +5,9 @@ use delegated::models::{
     TrustProfile,
 };
 use delegated::{
-    InMemoryTrustState, JsonlFileAuditSink, RequestEnvelope, TrustStateAdmin,
-    TOKEN_SIGNATURE_ALG_ED25519, handle_http_json_request_with_state,
-    sign_delegation_token, sign_identity_document,
+    InMemoryTrustState, JsonlFileAuditSink, RequestEnvelope, TOKEN_SIGNATURE_ALG_ED25519,
+    TrustStateAdmin, handle_http_json_request_with_state, sign_delegation_token,
+    sign_identity_document,
 };
 use ed25519_dalek::SigningKey;
 use serde_json::{Value, json};
@@ -122,14 +122,14 @@ fn allows_signed_request_end_to_end() {
             .as_nanos()
     ));
     let sink = JsonlFileAuditSink::new(path.clone());
-    let mut state = InMemoryTrustState::new();
+    let state = InMemoryTrustState::new();
     let body = signed_request_value("req_conf_allow", "nonce-allow").to_string();
 
     let response = handle_http_json_request_with_state(
         &body,
         now(),
         &sink,
-        &mut state,
+        &state,
         &delegated::HostContext::default(),
     );
     assert_eq!(response.status_code, 200);
@@ -148,7 +148,7 @@ fn denies_tampered_signature_end_to_end() {
             .as_nanos()
     ));
     let sink = JsonlFileAuditSink::new(path.clone());
-    let mut state = InMemoryTrustState::new();
+    let state = InMemoryTrustState::new();
     let mut request = signed_request_value("req_conf_tamper", "nonce-tamper");
     request["delegation_token"]["signature"] = json!("tampered-signature");
 
@@ -156,7 +156,7 @@ fn denies_tampered_signature_end_to_end() {
         &request.to_string(),
         now(),
         &sink,
-        &mut state,
+        &state,
         &delegated::HostContext::default(),
     );
     assert_eq!(response.status_code, 403);

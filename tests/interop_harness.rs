@@ -129,29 +129,29 @@ fn run_across_adapters(envelope: RequestEnvelope) -> (u16, Option<serde_json::Va
             .as_nanos()
     ));
     let sink = JsonlFileAuditSink::new(sink_path.clone());
-    let mut http_state = InMemoryTrustState::new();
-    let mut mcp_state = InMemoryTrustState::new();
-    let mut a2a_state = InMemoryTrustState::new();
+    let http_state = InMemoryTrustState::new();
+    let mcp_state = InMemoryTrustState::new();
+    let a2a_state = InMemoryTrustState::new();
 
     let http = handle_http_json_request_with_state(
         &http_body,
         now(),
         &sink,
-        &mut http_state,
+        &http_state,
         &delegated::HostContext::default(),
     );
     let mcp = handle_mcp_jsonrpc_request_with_state(
         &mcp_body,
         now(),
         &sink,
-        &mut mcp_state,
+        &mcp_state,
         &delegated::HostContext::default(),
     );
     let a2a = handle_a2a_request_with_state(
         &a2a_body,
         now(),
         &sink,
-        &mut a2a_state,
+        &a2a_state,
         &delegated::HostContext::default(),
     );
     let _ = std::fs::remove_file(sink_path);

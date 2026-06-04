@@ -73,7 +73,11 @@ pub fn evaluate_request_with_policy(
         Ok(envelope) => {
             let decision = Decision::allow("evaluate_policy", "request authorized");
             #[cfg(feature = "tracing")]
-            tracing::info!(allowed = true, stage = "evaluate_policy", "trust decision: allowed");
+            tracing::info!(
+                allowed = true,
+                stage = "evaluate_policy",
+                "trust decision: allowed"
+            );
             #[cfg(feature = "metrics")]
             {
                 metrics::counter!("delegated_requests_total", "allowed" => "true").increment(1);
@@ -199,7 +203,14 @@ pub fn evaluate_and_audit_with_state(
     trust_state: &dyn TrustStateStore,
     host_context: &HostContext,
 ) -> io::Result<Decision> {
-    evaluate_and_audit_with_policy(raw_request, now, sink, trust_state, host_context, &DefaultPolicy)
+    evaluate_and_audit_with_policy(
+        raw_request,
+        now,
+        sink,
+        trust_state,
+        host_context,
+        &DefaultPolicy,
+    )
 }
 
 pub fn evaluate_and_audit_with_policy(
@@ -441,7 +452,7 @@ mod tests {
         let (decision, event) = evaluate_request(&valid_request(), now());
         assert!(decision.allowed, "unexpected deny: {}", decision.reason);
         assert_eq!(decision.stage, "evaluate_policy");
-        assert_eq!(event.allowed, true);
+        assert!(event.allowed);
         let token_id = event
             .token_id
             .as_deref()
@@ -457,7 +468,7 @@ mod tests {
         let (decision, event) = evaluate_request(&request, now());
         assert!(!decision.allowed);
         assert_eq!(decision.stage, "evaluate_policy");
-        assert_eq!(event.allowed, false);
+        assert!(!event.allowed);
     }
 
     #[test]
@@ -632,7 +643,9 @@ mod tests {
         let token_id = request["delegation_token"]["token_id"]
             .as_str()
             .expect("token_id should be present");
-        trust_state.revoke_token(token_id).expect("revoke should succeed");
+        trust_state
+            .revoke_token(token_id)
+            .expect("revoke should succeed");
 
         let (decision, _event) =
             evaluate_request_with_state(&request, now(), &trust_state, &HostContext::default());

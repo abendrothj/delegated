@@ -4,7 +4,7 @@ use crate::models::HostContext;
 use crate::revocation_async::AsyncTrustStateStore;
 use axum::{
     body::Body,
-    http::{Request, StatusCode},
+    http::{Request, StatusCode, header::CONTENT_LENGTH},
     response::Response,
 };
 use chrono::Utc;
@@ -14,6 +14,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tower::{Layer, Service};
+
+const DEFAULT_MAX_BODY_BYTES: usize = 1024 * 1024;
 
 /// Provides a `HostContext` for each incoming request based on the extracted agent and delegator IDs.
 pub trait AsyncHostContextProvider: Send + Sync {
@@ -43,19 +45,18 @@ pub struct DelegatedLayerBuilder {
     trust_state: Arc<dyn AsyncTrustStateStore>,
     audit_sink: Arc<dyn AuditSink>,
     host_context_provider: Arc<dyn AsyncHostContextProvider>,
+    max_body_bytes: usize,
 }
 
 impl DelegatedLayerBuilder {
-    pub fn new(
-        trust_state: Arc<dyn AsyncTrustStateStore>,
-        audit_sink: Arc<dyn AuditSink>,
-    ) -> Self {
+    pub fn new(trust_state: Arc<dyn AsyncTrustStateStore>, audit_sink: Arc<dyn AuditSink>) -> Self {
         Self {
             trust_state,
             audit_sink,
             host_context_provider: Arc::new(StaticAsyncHostContextProvider::new(
                 HostContext::default(),
             )),
+            max_body_bytes: DEFAULT_MAX_BODY_BYTES,
         }
     }
 
@@ -67,11 +68,21 @@ impl DelegatedLayerBuilder {
         self
     }
 
+    /// Sets the maximum JSON request body size accepted by the layer.
+    ///
+    /// Requests above this limit return `413 Payload Too Large`.
+    /// Default: 1 MiB.
+    pub fn with_max_body_bytes(mut self, max_body_bytes: usize) -> Self {
+        self.max_body_bytes = max_body_bytes;
+        self
+    }
+
     pub fn build(self) -> DelegatedLayer {
         DelegatedLayer {
             trust_state: self.trust_state,
             audit_sink: self.audit_sink,
             host_context_provider: self.host_context_provider,
+            max_body_bytes: self.max_body_bytes,
         }
     }
 }
@@ -83,7 +94,8 @@ impl DelegatedLayerBuilder {
 /// evaluation pipeline (normalize → signatures → lifetime → revocation → policy
 /// → audit), and either passes the request to the inner service (on allow) or
 /// returns a `403 Forbidden` JSON response (on deny). A `429` is returned when
-/// the audit sink fails, and `400` for malformed bodies.
+/// the audit sink fails, `400` for malformed bodies, and `413` for request
+/// bodies above the configured size limit.
 ///
 /// The buffered body bytes are forwarded to the inner service unchanged so that
 /// downstream axum handlers can still read them with `Json<T>`.
@@ -92,6 +104,7 @@ pub struct DelegatedLayer {
     trust_state: Arc<dyn AsyncTrustStateStore>,
     audit_sink: Arc<dyn AuditSink>,
     host_context_provider: Arc<dyn AsyncHostContextProvider>,
+    max_body_bytes: usize,
 }
 
 impl<S> Layer<S> for DelegatedLayer {
@@ -103,6 +116,7 @@ impl<S> Layer<S> for DelegatedLayer {
             trust_state: Arc::clone(&self.trust_state),
             audit_sink: Arc::clone(&self.audit_sink),
             host_context_provider: Arc::clone(&self.host_context_provider),
+            max_body_bytes: self.max_body_bytes,
         }
     }
 }
@@ -114,6 +128,7 @@ pub struct DelegatedService<S> {
     trust_state: Arc<dyn AsyncTrustStateStore>,
     audit_sink: Arc<dyn AuditSink>,
     host_context_provider: Arc<dyn AsyncHostContextProvider>,
+    max_body_bytes: usize,
 }
 
 impl<S> Service<Request<Body>> for DelegatedService<S>
@@ -136,14 +151,42 @@ where
         let trust_state = Arc::clone(&self.trust_state);
         let audit_sink = Arc::clone(&self.audit_sink);
         let host_context_provider = Arc::clone(&self.host_context_provider);
+        let max_body_bytes = self.max_body_bytes;
         let mut inner = self.inner.clone();
 
         Box::pin(async move {
             let (parts, body) = req.into_parts();
 
-            let bytes = match axum::body::to_bytes(body, usize::MAX).await {
+            if let Some(content_length) = parts
+                .headers
+                .get(CONTENT_LENGTH)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<usize>().ok())
+                && content_length > max_body_bytes
+            {
+                return Ok(json_response(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    json!({
+                        "allowed": false,
+                        "stage": "axum_layer",
+                        "reason": format!("request body exceeds {} bytes", max_body_bytes)
+                    }),
+                ));
+            }
+
+            let bytes = match axum::body::to_bytes(body, max_body_bytes).await {
                 Ok(b) => b,
                 Err(e) => {
+                    if e.to_string().contains("length limit exceeded") {
+                        return Ok(json_response(
+                            StatusCode::PAYLOAD_TOO_LARGE,
+                            json!({
+                                "allowed": false,
+                                "stage": "axum_layer",
+                                "reason": format!("request body exceeds {} bytes", max_body_bytes)
+                            }),
+                        ));
+                    }
                     return Ok(json_response(
                         StatusCode::BAD_REQUEST,
                         json!({"allowed":false,"stage":"axum_layer","reason":format!("failed to read body: {e}")}),

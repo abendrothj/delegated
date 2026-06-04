@@ -7,8 +7,8 @@
 /// - A nonce-replayed request is denied (403).
 use axum::{Json, Router, routing::post};
 use delegated::{
-    DelegatedClient, DelegatedLayerBuilder, InMemoryAsyncTrustState,
-    JsonlFileAuditSink, RequestEnvelope,
+    DelegatedClient, DelegatedLayerBuilder, InMemoryAsyncTrustState, JsonlFileAuditSink,
+    RequestEnvelope,
     issuance::{AgentIdentityDocumentBuilder, DelegationTokenBuilder, RequestEnvelopeBuilder},
 };
 use serde_json::json;
@@ -83,9 +83,7 @@ async fn run_server() -> SocketAddr {
     let addr = listener.local_addr().expect("should have local addr");
 
     tokio::spawn(async move {
-        axum::serve(listener, app)
-            .await
-            .expect("server should run");
+        axum::serve(listener, app).await.expect("server should run");
     });
 
     addr
@@ -103,7 +101,12 @@ async fn allows_valid_request() {
         .await
         .expect("request should complete");
 
-    assert!(resp.is_allowed(), "expected allow, got: {} / {}", resp.stage, resp.reason);
+    assert!(
+        resp.is_allowed(),
+        "expected allow, got: {} / {}",
+        resp.stage,
+        resp.reason
+    );
     assert_eq!(resp.status_code, 200);
 }
 

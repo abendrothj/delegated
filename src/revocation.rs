@@ -15,7 +15,9 @@ pub struct TrustStateError {
 
 impl TrustStateError {
     pub fn new(message: impl Into<String>) -> Self {
-        Self { message: message.into() }
+        Self {
+            message: message.into(),
+        }
     }
 }
 
@@ -37,7 +39,11 @@ pub trait TrustStateStore {
     fn is_agent_emergency_denied(&self, agent_id: &str) -> Result<bool, TrustStateError>;
     /// Atomically record that a nonce has been consumed, returning `true` if it
     /// was fresh or `false` if it was already seen (replay).
-    fn consume_nonce(&self, nonce: &str, valid_until: DateTime<Utc>) -> Result<bool, TrustStateError>;
+    fn consume_nonce(
+        &self,
+        nonce: &str,
+        valid_until: DateTime<Utc>,
+    ) -> Result<bool, TrustStateError>;
 }
 
 /// Administrative operations for managing revocation and deny-list state.
@@ -83,15 +89,21 @@ pub struct RuntimeTrustConfig {
 
 impl RuntimeTrustConfig {
     pub fn durable_default() -> Self {
-        Self { backend: TrustStateBackend::DurableDefault }
+        Self {
+            backend: TrustStateBackend::DurableDefault,
+        }
     }
 
     pub fn durable_path(path: impl Into<PathBuf>) -> Self {
-        Self { backend: TrustStateBackend::DurablePath(path.into()) }
+        Self {
+            backend: TrustStateBackend::DurablePath(path.into()),
+        }
     }
 
     pub fn in_memory() -> Self {
-        Self { backend: TrustStateBackend::InMemory }
+        Self {
+            backend: TrustStateBackend::InMemory,
+        }
     }
 }
 
@@ -106,7 +118,9 @@ pub fn default_trust_state_path() -> PathBuf {
         return PathBuf::from(override_path);
     }
     if let Some(home) = std::env::var_os("HOME") {
-        return PathBuf::from(home).join(".delegated").join("trust-state.json");
+        return PathBuf::from(home)
+            .join(".delegated")
+            .join("trust-state.json");
     }
     PathBuf::from(".delegated").join("trust-state.json")
 }
@@ -123,6 +137,7 @@ pub fn trust_state_from_runtime_config(config: &RuntimeTrustConfig) -> Box<dyn T
 
 // ─── InMemoryTrustState ──────────────────────────────────────────────────────
 
+#[derive(Debug)]
 struct InMemoryTrustInner {
     revoked_token_ids: HashSet<String>,
     emergency_denied_agents: HashSet<String>,
@@ -134,6 +149,7 @@ struct InMemoryTrustInner {
 /// Suitable for tests and single-process deployments. For multi-process or
 /// distributed production use, implement [`TrustStateStore`] against a shared
 /// store (Redis, PostgreSQL, etc.).
+#[derive(Debug)]
 pub struct InMemoryTrustState {
     inner: Mutex<InMemoryTrustInner>,
     backend_available: AtomicBool,
@@ -189,10 +205,16 @@ impl TrustStateStore for InMemoryTrustState {
         Ok(inner.emergency_denied_agents.contains(agent_id))
     }
 
-    fn consume_nonce(&self, nonce: &str, valid_until: DateTime<Utc>) -> Result<bool, TrustStateError> {
+    fn consume_nonce(
+        &self,
+        nonce: &str,
+        valid_until: DateTime<Utc>,
+    ) -> Result<bool, TrustStateError> {
         self.ensure_available()?;
         let mut inner = self.lock()?;
-        inner.consumed_nonces.retain(|_, expires_at| *expires_at >= valid_until);
+        inner
+            .consumed_nonces
+            .retain(|_, expires_at| *expires_at >= valid_until);
         if inner.consumed_nonces.contains_key(nonce) {
             return Ok(false);
         }
@@ -228,7 +250,9 @@ impl TrustStateAdmin for InMemoryTrustState {
         self.ensure_available()?;
         let mut inner = self.lock()?;
         let before = inner.consumed_nonces.len();
-        inner.consumed_nonces.retain(|_, expires_at| *expires_at >= reference_time);
+        inner
+            .consumed_nonces
+            .retain(|_, expires_at| *expires_at >= reference_time);
         Ok((before - inner.consumed_nonces.len()) as u64)
     }
 }
@@ -253,7 +277,10 @@ pub struct FileBackedTrustState {
 
 impl FileBackedTrustState {
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into(), backend_available: true }
+        Self {
+            path: path.into(),
+            backend_available: true,
+        }
     }
 
     pub fn set_backend_available(&mut self, available: bool) {
@@ -304,7 +331,11 @@ impl FileBackedTrustState {
         }
         let mut attempts = 0u8;
         loop {
-            match fs::OpenOptions::new().write(true).create_new(true).open(&lock_path) {
+            match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock_path)
+            {
                 Ok(_) => return Ok(FileLockGuard { lock_path }),
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                     attempts += 1;
@@ -367,15 +398,23 @@ impl TrustStateStore for FileBackedTrustState {
         Ok(persisted.emergency_denied_agents.contains(agent_id))
     }
 
-    fn consume_nonce(&self, nonce: &str, valid_until: DateTime<Utc>) -> Result<bool, TrustStateError> {
+    fn consume_nonce(
+        &self,
+        nonce: &str,
+        valid_until: DateTime<Utc>,
+    ) -> Result<bool, TrustStateError> {
         self.ensure_available()?;
         let _lock = self.acquire_lock()?;
         let mut persisted = self.load_persisted()?;
-        persisted.consumed_nonces.retain(|_, expires_at| *expires_at >= valid_until);
+        persisted
+            .consumed_nonces
+            .retain(|_, expires_at| *expires_at >= valid_until);
         if persisted.consumed_nonces.contains_key(nonce) {
             return Ok(false);
         }
-        persisted.consumed_nonces.insert(nonce.to_string(), valid_until);
+        persisted
+            .consumed_nonces
+            .insert(nonce.to_string(), valid_until);
         self.save_persisted(&persisted)?;
         Ok(true)
     }
@@ -405,7 +444,9 @@ impl TrustStateAdmin for FileBackedTrustState {
         let _lock = self.acquire_lock()?;
         let mut persisted = self.load_persisted()?;
         let before = persisted.consumed_nonces.len();
-        persisted.consumed_nonces.retain(|_, expires_at| *expires_at >= reference_time);
+        persisted
+            .consumed_nonces
+            .retain(|_, expires_at| *expires_at >= reference_time);
         let removed = before - persisted.consumed_nonces.len();
         if removed > 0 {
             self.save_persisted(&persisted)?;
@@ -462,28 +503,46 @@ mod tests {
     fn in_memory_bulk_revoke_and_clear() {
         let store = InMemoryTrustState::new();
         let ids = ["dlg_a", "dlg_b", "dlg_c"];
-        let count = store.revoke_tokens(&ids).expect("bulk revoke should succeed");
+        let count = store
+            .revoke_tokens(&ids)
+            .expect("bulk revoke should succeed");
         assert_eq!(count, 3);
         for id in &ids {
             assert!(store.is_token_revoked(id).expect("query should succeed"));
         }
 
-        store.emergency_deny_agent("agent:bad").expect("deny should succeed");
+        store
+            .emergency_deny_agent("agent:bad")
+            .expect("deny should succeed");
         assert_eq!(
-            store.clear_emergency_deny_list().expect("clear should succeed"),
+            store
+                .clear_emergency_deny_list()
+                .expect("clear should succeed"),
             1
         );
-        assert!(!store.is_agent_emergency_denied("agent:bad").expect("query should succeed"));
+        assert!(
+            !store
+                .is_agent_emergency_denied("agent:bad")
+                .expect("query should succeed")
+        );
     }
 
     #[test]
     fn in_memory_flush_expired_nonces() {
         let store = InMemoryTrustState::new();
-        let past = Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).single().expect("valid ts");
+        let past = Utc
+            .with_ymd_and_hms(2020, 1, 1, 0, 0, 0)
+            .single()
+            .expect("valid ts");
         // Consume a nonce that is already expired. Do not consume anything with a
         // future expiry afterward — the retain inside consume_nonce would clear it.
-        store.consume_nonce("old", past).expect("consume should succeed");
-        let reference = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).single().expect("valid ts");
+        store
+            .consume_nonce("old", past)
+            .expect("consume should succeed");
+        let reference = Utc
+            .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+            .single()
+            .expect("valid ts");
         let flushed = store
             .flush_expired_nonces(reference)
             .expect("flush should succeed");
@@ -531,12 +590,20 @@ mod tests {
                 .as_nanos()
         ));
         let store = FileBackedTrustState::new(path.clone());
-        store.emergency_deny_agent("agent:bad").expect("deny should persist");
+        store
+            .emergency_deny_agent("agent:bad")
+            .expect("deny should persist");
         assert_eq!(
-            store.clear_emergency_deny_list().expect("clear should succeed"),
+            store
+                .clear_emergency_deny_list()
+                .expect("clear should succeed"),
             1
         );
-        assert!(!store.is_agent_emergency_denied("agent:bad").expect("query should succeed"));
+        assert!(
+            !store
+                .is_agent_emergency_denied("agent:bad")
+                .expect("query should succeed")
+        );
         std::fs::remove_file(&path).expect("state file should be removable");
     }
 }

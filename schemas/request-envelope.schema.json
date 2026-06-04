@@ -27,25 +27,8 @@
       "properties": {
         "requested_spend": { "type": "integer" },
         "spend_currency": { "type": "string", "minLength": 1 },
-        "delegation_depth": { "type": "integer", "minimum": 0 },
         "target_email": { "type": "string", "minLength": 1 },
-        "target_calendar_id": { "type": "string", "minLength": 1 },
-        "cognitive_judge_scores_bps": {
-          "type": "array",
-          "items": { "type": "integer", "minimum": 0, "maximum": 10000 }
-        },
-        "cognitive_challenge_pass_bps": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 10000
-        },
-        "reputation_score_bps": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 10000
-        },
-        "risk_challenge_passed": { "type": "boolean" },
-        "extra_approval_granted": { "type": "boolean" }
+        "target_calendar_id": { "type": "string", "minLength": 1 }
       },
       "additionalProperties": true
     },

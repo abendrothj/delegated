@@ -38,14 +38,16 @@ use delegated::{
 
 let trust_state = Arc::new(InMemoryAsyncTrustState::new());
 let sink = Arc::new(JsonlFileAuditSink::new("audit.jsonl"));
-let layer = DelegatedLayerBuilder::new(trust_state, sink).build();
+let layer = DelegatedLayerBuilder::new(trust_state, sink)
+    .with_max_body_bytes(1024 * 1024) // optional, default is 1 MiB
+    .build();
 
 let app = axum::Router::new()
     .route("/tools/call", axum::routing::post(my_handler))
     .layer(layer);
 ```
 
-Every POST to `/tools/call` is evaluated before `my_handler` runs. Denied requests return 403 with `{allowed, stage, reason}` JSON; allowed requests pass through.
+Every POST to `/tools/call` is evaluated before `my_handler` runs. Denied requests return 403 with `{allowed, stage, reason}` JSON; allowed requests pass through. Oversized request bodies return 413.
 
 ## Quickstart — client side
 
@@ -120,6 +122,12 @@ let response = handle_mcp_jsonrpc_request(&raw_body, Utc::now(), &sink);
 use delegated::handle_a2a_request;
 let response = handle_a2a_request(&raw_body, Utc::now(), &sink);
 ```
+
+## Host context vs request runtime context
+
+`runtime_context` in `RequestEnvelope` is caller-provided data used for request-specific checks (spend amount, target email/calendar, etc).
+
+Security-sensitive trust signals (delegation depth, cognitive/reputation/risk assessments, extra approvals, clock leeway) are supplied by your infrastructure via `HostContext`/`HostContextProvider` and are never trusted from inbound request JSON.
 
 ## Trust state
 

@@ -1,4 +1,4 @@
-use crate::revocation::{TrustStateAdmin, TrustStateError, TrustStateStore};
+use crate::revocation::TrustStateError;
 use crate::revocation_async::{AsyncTrustStateAdmin, AsyncTrustStateStore};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -32,10 +32,7 @@ impl RedisTrustStateStore {
 
     /// Connect with a custom key prefix. Useful when multiple services share
     /// one Redis instance and need isolated key namespaces.
-    pub async fn connect_with_prefix(
-        url: &str,
-        prefix: &str,
-    ) -> Result<Self, redis::RedisError> {
+    pub async fn connect_with_prefix(url: &str, prefix: &str) -> Result<Self, redis::RedisError> {
         let client = redis::Client::open(url)?;
         let conn = ConnectionManager::new(client).await?;
         Ok(Self {

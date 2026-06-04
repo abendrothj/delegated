@@ -1,7 +1,5 @@
 use crate::contracts::SPEC_VERSION_CURRENT;
-use crate::crypto::{
-    TOKEN_SIGNATURE_ALG_ED25519, sign_delegation_token, sign_identity_document,
-};
+use crate::crypto::{TOKEN_SIGNATURE_ALG_ED25519, sign_delegation_token, sign_identity_document};
 use crate::models::{
     AgentEndpoint, AgentIdentityDocument, DelegationToken, MaxSpend, PublicKeyRecord,
     RequestEnvelope, ResourceConstraints, RuntimeContext, TrustProfile,
@@ -27,19 +25,22 @@ fn unique_suffix() -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IssuanceError {
     pub field: &'static str,
-    pub reason: &'static str,
+    pub reason: String,
 }
 
 impl IssuanceError {
     fn missing(field: &'static str) -> Self {
         Self {
             field,
-            reason: "required field is missing",
+            reason: "required field is missing".to_string(),
         }
     }
 
-    fn invalid(field: &'static str, reason: &'static str) -> Self {
-        Self { field, reason }
+    fn invalid(field: &'static str, reason: impl Into<String>) -> Self {
+        Self {
+            field,
+            reason: reason.into(),
+        }
     }
 }
 
@@ -143,10 +144,7 @@ impl DelegationTokenBuilder {
         self
     }
 
-    pub fn allowed_actions(
-        mut self,
-        actions: impl IntoIterator<Item = impl Into<String>>,
-    ) -> Self {
+    pub fn allowed_actions(mut self, actions: impl IntoIterator<Item = impl Into<String>>) -> Self {
         self.allowed_actions
             .extend(actions.into_iter().map(Into::into));
         self
@@ -201,8 +199,13 @@ impl DelegationTokenBuilder {
         self
     }
 
-    pub fn build_and_sign(self, signing_key: &SigningKey) -> Result<DelegationToken, IssuanceError> {
-        let issuer = self.issuer.ok_or_else(|| IssuanceError::missing("issuer"))?;
+    pub fn build_and_sign(
+        self,
+        signing_key: &SigningKey,
+    ) -> Result<DelegationToken, IssuanceError> {
+        let issuer = self
+            .issuer
+            .ok_or_else(|| IssuanceError::missing("issuer"))?;
         let agent_id = self
             .agent_id
             .ok_or_else(|| IssuanceError::missing("agent_id"))?;
@@ -249,9 +252,7 @@ impl DelegationTokenBuilder {
         let mut token = DelegationToken {
             spec_version: SPEC_VERSION_CURRENT.to_string(),
             kind: "DelegationToken".to_string(),
-            token_id: self
-                .token_id
-                .unwrap_or_else(|| format!("dlg_{suffix}")),
+            token_id: self.token_id.unwrap_or_else(|| format!("dlg_{suffix}")),
             issuer,
             agent_id,
             delegator_id,
@@ -264,16 +265,14 @@ impl DelegationTokenBuilder {
             issued_at,
             expires_at,
             intent: self.intent,
-            nonce: self
-                .nonce
-                .unwrap_or_else(|| format!("nonce_{suffix}")),
+            nonce: self.nonce.unwrap_or_else(|| format!("nonce_{suffix}")),
             key_id,
             signature_alg: TOKEN_SIGNATURE_ALG_ED25519.to_string(),
             signature: String::new(),
         };
 
         token.signature = sign_delegation_token(&token, signing_key)
-            .map_err(|v| IssuanceError::invalid("signature", Box::leak(v.reason.into_boxed_str())))?;
+            .map_err(|v| IssuanceError::invalid("signature", v.reason))?;
 
         Ok(token)
     }
@@ -370,11 +369,7 @@ impl AgentIdentityDocumentBuilder {
     /// Register an additional public key for key rotation. The primary signing
     /// key is always included; call this for each extra key that should appear
     /// in `public_keys` so clients can verify tokens signed by any active key.
-    pub fn additional_public_key(
-        mut self,
-        kid: impl Into<String>,
-        key: &VerifyingKey,
-    ) -> Self {
+    pub fn additional_public_key(mut self, kid: impl Into<String>, key: &VerifyingKey) -> Self {
         self.additional_public_keys.push(PublicKeyRecord {
             kid: kid.into(),
             kty: "OKP".to_string(),
@@ -395,7 +390,9 @@ impl AgentIdentityDocumentBuilder {
     }
 
     pub fn capability(mut self, cap: impl Into<String>) -> Self {
-        self.capabilities.get_or_insert_with(Vec::new).push(cap.into());
+        self.capabilities
+            .get_or_insert_with(Vec::new)
+            .push(cap.into());
         self
     }
 
@@ -432,7 +429,9 @@ impl AgentIdentityDocumentBuilder {
         let owner_id = self
             .owner_id
             .ok_or_else(|| IssuanceError::missing("owner_id"))?;
-        let issuer = self.issuer.ok_or_else(|| IssuanceError::missing("issuer"))?;
+        let issuer = self
+            .issuer
+            .ok_or_else(|| IssuanceError::missing("issuer"))?;
         let identity_type = self
             .identity_type
             .ok_or_else(|| IssuanceError::missing("identity_type"))?;
@@ -487,7 +486,7 @@ impl AgentIdentityDocumentBuilder {
         };
 
         doc.signature = sign_identity_document(&doc, signing_key)
-            .map_err(|v| IssuanceError::invalid("signature", Box::leak(v.reason.into_boxed_str())))?;
+            .map_err(|v| IssuanceError::invalid("signature", v.reason))?;
 
         Ok(doc)
     }
@@ -597,9 +596,7 @@ impl RequestEnvelopeBuilder {
     }
 
     pub fn build(self) -> Result<RequestEnvelope, IssuanceError> {
-        let token = self
-            .token
-            .ok_or_else(|| IssuanceError::missing("token"))?;
+        let token = self.token.ok_or_else(|| IssuanceError::missing("token"))?;
         let audience = self
             .audience
             .ok_or_else(|| IssuanceError::missing("audience"))?;
@@ -635,9 +632,8 @@ impl RequestEnvelopeBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::evaluate_request;
-    use crate::revocation::InMemoryTrustState;
     use crate::engine::evaluate_request_with_state;
+    use crate::revocation::InMemoryTrustState;
 
     fn key() -> SigningKey {
         SigningKey::from_bytes(&[88u8; 32])
@@ -773,7 +769,12 @@ mod tests {
 
         let raw = serde_json::to_value(envelope).expect("serialization should succeed");
         let state = InMemoryTrustState::new();
-        let (decision, _) = evaluate_request_with_state(&raw, now(), &state, &crate::models::HostContext::default());
+        let (decision, _) = evaluate_request_with_state(
+            &raw,
+            now(),
+            &state,
+            &crate::models::HostContext::default(),
+        );
         assert!(decision.allowed, "unexpected deny: {}", decision.reason);
     }
 }
