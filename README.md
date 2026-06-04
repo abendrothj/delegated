@@ -5,7 +5,7 @@ Fail-closed trust evaluation for agentic AI systems.
 `delegated` verifies delegation tokens and enforces policy on every agent action — before your tools, APIs, or downstream agents run anything. Drop it in as Tower middleware, call the standalone adapters, or use the client SDK to attach trust claims to outbound requests.
 
 [![crates.io](https://img.shields.io/crates/v/delegated.svg)](https://crates.io/crates/delegated)
-[![docs.rs](https://img.shields.io/docsrs/delegated)](https://docs.rs/delegated/0.1.0/delegated/)
+[![docs.rs](https://img.shields.io/docsrs/delegated)](https://docs.rs/crate/delegated/latest)
 
 ## What it does
 
