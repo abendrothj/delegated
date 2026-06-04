@@ -2,6 +2,8 @@
 
 This runbook targets small teams running `delegated` in production.
 
+See also: [`KNOWN_LIMITS.md`](KNOWN_LIMITS.md)
+
 ## Deployment profile
 
 1. Use shared trust state (`RedisTrustStateStore`) for multi-instance services.
@@ -52,4 +54,3 @@ Monitor:
 1. Restore backend first.
 2. Confirm state queries succeed.
 3. Replay validation requests to verify recovery.
-

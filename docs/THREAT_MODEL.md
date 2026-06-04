@@ -2,6 +2,8 @@
 
 This document defines the security boundaries and attacker model for `delegated`.
 
+See also: [`KNOWN_LIMITS.md`](KNOWN_LIMITS.md)
+
 ## Security objectives
 
 1. **Fail-closed authorization**: requests are denied on validation, policy, or backend trust-state errors.
@@ -103,4 +105,3 @@ Expected behavior: deny with HTTP 413 before trust pipeline evaluation.
 ### Signature tampering
 
 Expected behavior: deny at `verify_signatures`.
-

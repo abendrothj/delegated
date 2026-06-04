@@ -13,6 +13,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Added `SECURITY.md` with vulnerability reporting and deployment hardening guidance.
 - Added `examples/eval_benchmark.rs` for quick local evaluation throughput baselines.
 - Added comprehensive threat model (`docs/THREAT_MODEL.md`) and mapped production security checklist (`docs/SECURITY_CHECKLIST.md`).
+- Added explicit production-facing known limits document (`docs/KNOWN_LIMITS.md`).
 
 ### Production starter pack
 
