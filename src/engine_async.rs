@@ -29,6 +29,13 @@ pub async fn evaluate_request_with_async_state(
     .await
 }
 
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(skip_all, fields(
+        agent_id = %raw_request.get("agent_id").and_then(|v| v.as_str()).unwrap_or(""),
+        action   = %raw_request.get("action").and_then(|v| v.as_str()).unwrap_or(""),
+    ))
+)]
 pub async fn evaluate_request_with_async_state_and_policy(
     raw_request: &Value,
     now: DateTime<Utc>,
@@ -53,11 +60,20 @@ pub async fn evaluate_request_with_async_state_and_policy(
 
     match result {
         Ok(envelope) => {
+            #[cfg(feature = "tracing")]
+            tracing::info!(allowed = true, stage = "evaluate_policy", "trust decision: allowed");
             let decision = Decision::allow("evaluate_policy", "request authorized");
             let event = from_envelope(envelope, &decision, now);
             (decision, event)
         }
         Err(violation) => {
+            #[cfg(feature = "tracing")]
+            tracing::info!(
+                allowed = false,
+                stage = %violation.stage,
+                reason = %violation.reason,
+                "trust decision: denied"
+            );
             let decision = Decision::deny(violation.stage, violation.reason.clone());
             let event = from_raw(raw_request, &violation, now);
             (decision, event)

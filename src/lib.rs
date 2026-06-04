@@ -7,6 +7,7 @@ pub mod delegation_ux;
 pub mod discovery;
 pub mod engine;
 pub mod host_context;
+pub mod issuance;
 pub mod models;
 pub mod policy;
 pub mod policy_trait;
@@ -21,6 +22,9 @@ pub mod engine_async;
 pub mod revocation_async;
 #[cfg(feature = "async")]
 pub mod stages_async;
+
+#[cfg(feature = "redis")]
+pub mod revocation_redis;
 
 #[cfg(feature = "oidc-bridge")]
 pub mod identity_verifier;
@@ -68,6 +72,9 @@ pub use engine::{
     evaluate_request_with_state, simulate_request_policy, simulate_request_policy_with_policy,
 };
 pub use host_context::{HostContextBuilder, HostContextProvider, StaticHostContextProvider};
+pub use issuance::{
+    AgentIdentityDocumentBuilder, DelegationTokenBuilder, IssuanceError, RequestEnvelopeBuilder,
+};
 pub use models::{
     AuditEvent, Decision, HostContext, PolicyCheck, RequestEnvelope, TrustProfile, Violation,
 };
@@ -114,6 +121,9 @@ pub use revocation_async::{AsyncTrustStateAdmin, AsyncTrustStateStore, InMemoryA
 pub use adapters::axum_layer::{
     AsyncHostContextProvider, DelegatedLayer, DelegatedLayerBuilder, StaticAsyncHostContextProvider,
 };
+
+#[cfg(feature = "redis")]
+pub use revocation_redis::{RedisTrustStateStore, undeny_agent, unrevoke_token};
 
 #[cfg(feature = "oidc-bridge")]
 pub use engine::evaluate_request_with_verifier;
