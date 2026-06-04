@@ -12,6 +12,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Added GitHub Actions CI workflow for `fmt`, strict `clippy`, test matrix, and publish dry-run validation.
 - Added `SECURITY.md` with vulnerability reporting and deployment hardening guidance.
 - Added `examples/eval_benchmark.rs` for quick local evaluation throughput baselines.
+- Added comprehensive threat model (`docs/THREAT_MODEL.md`) and mapped production security checklist (`docs/SECURITY_CHECKLIST.md`).
 
 ### Production starter pack
 

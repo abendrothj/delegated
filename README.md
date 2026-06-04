@@ -19,6 +19,8 @@ Fail-closed trust evaluation for agentic AI systems.
 ## Security and reliability
 
 - Security policy and reporting: [`SECURITY.md`](SECURITY.md)
+- Threat model: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)
+- Production security checklist: [`docs/SECURITY_CHECKLIST.md`](docs/SECURITY_CHECKLIST.md)
 - CI enforces format/lint/tests/publish dry-run on pushes and PRs
 - Quick local baseline benchmark:
 

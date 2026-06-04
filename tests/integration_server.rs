@@ -67,7 +67,27 @@ async fn run_server() -> SocketAddr {
     let sink = Arc::new(JsonlFileAuditSink::new(audit_path));
 
     let layer = DelegatedLayerBuilder::new(trust_state, sink).build();
+    run_server_with_layer(layer).await
+}
 
+async fn run_server_with_limit(max_body_bytes: usize) -> SocketAddr {
+    let trust_state = Arc::new(InMemoryAsyncTrustState::new());
+    let audit_path = std::env::temp_dir().join(format!(
+        "delegated_integration_limit_{}.jsonl",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time after epoch")
+            .as_nanos()
+    ));
+    let sink = Arc::new(JsonlFileAuditSink::new(audit_path));
+
+    let layer = DelegatedLayerBuilder::new(trust_state, sink)
+        .with_max_body_bytes(max_body_bytes)
+        .build();
+    run_server_with_layer(layer).await
+}
+
+async fn run_server_with_layer(layer: delegated::DelegatedLayer) -> SocketAddr {
     let app = Router::new()
         .route(
             "/trust",
@@ -146,4 +166,27 @@ async fn denies_nonce_replay() {
     assert!(!second.is_allowed(), "nonce replay should be denied");
     assert_eq!(second.status_code, 403);
     assert_eq!(second.reason, "delegation token nonce replay detected");
+}
+
+#[tokio::test]
+async fn denies_oversized_body_with_413() {
+    let addr = run_server_with_limit(128).await;
+    let url = format!("http://{addr}/trust");
+    let client = reqwest::Client::new();
+
+    let oversized = "x".repeat(8_192);
+    let body = json!({
+        "agent_id": oversized,
+        "delegator_id": "user:integration-alice"
+    });
+
+    let response = client
+        .post(url)
+        .header("content-type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .expect("oversized request should return response");
+
+    assert_eq!(response.status().as_u16(), 413);
 }
