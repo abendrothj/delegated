@@ -13,6 +13,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Added `SECURITY.md` with vulnerability reporting and deployment hardening guidance.
 - Added `examples/eval_benchmark.rs` for quick local evaluation throughput baselines.
 
+### Production starter pack
+
+- Added operations runbook (`docs/OPERATIONS.md`) for deployment, monitoring, and incident workflows.
+- Added 30-minute integration guide (`docs/INTEGRATION_GUIDE.md`) for first production adoption.
+- Added `scripts/conformance.sh` and `scripts/release_check.sh` for repeatable solo-team validation workflows.
+
 ## [0.1.1] — 2026-06-04
 
 ### Metadata

@@ -26,6 +26,13 @@ Fail-closed trust evaluation for agentic AI systems.
 cargo run --release --example eval_benchmark -- 20000
 ```
 
+## Production starter pack
+
+- Operations runbook: [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
+- 30-minute integration path: [`docs/INTEGRATION_GUIDE.md`](docs/INTEGRATION_GUIDE.md)
+- Conformance runner: `./scripts/conformance.sh`
+- Release gate runner: `./scripts/release_check.sh`
+
 ## Feature flags
 
 | Flag | What it enables |
