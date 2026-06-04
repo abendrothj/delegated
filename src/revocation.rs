@@ -81,15 +81,15 @@ impl Default for RuntimeTrustConfig {
 }
 
 pub fn default_trust_state_path() -> PathBuf {
-    if let Some(override_path) = std::env::var_os("AGENTAUTH_TRUST_STATE_PATH") {
+    if let Some(override_path) = std::env::var_os("DELEGATED_TRUST_STATE_PATH") {
         return PathBuf::from(override_path);
     }
     if let Some(home) = std::env::var_os("HOME") {
         return PathBuf::from(home)
-            .join(".agentauth")
+            .join(".delegated")
             .join("trust-state.json");
     }
-    PathBuf::from(".agentauth").join("trust-state.json")
+    PathBuf::from(".delegated").join("trust-state.json")
 }
 
 pub fn trust_state_from_runtime_config(config: &RuntimeTrustConfig) -> Box<dyn TrustStateStore> {
@@ -422,7 +422,7 @@ mod tests {
     #[test]
     fn file_store_persists_revocations_and_nonce_consumption() {
         let path = std::env::temp_dir().join(format!(
-            "agentauth_trust_state_{}.json",
+            "delegated_trust_state_{}.json",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")

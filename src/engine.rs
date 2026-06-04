@@ -528,7 +528,7 @@ mod tests {
         assert!(decision.allowed);
 
         let path = std::env::temp_dir().join(format!(
-            "agentauth_audit_{}.jsonl",
+            "delegated_audit_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")
@@ -546,7 +546,7 @@ mod tests {
     fn runtime_config_uses_durable_state_by_path() {
         let request = valid_request();
         let path = std::env::temp_dir().join(format!(
-            "agentauth_runtime_state_{}.json",
+            "delegated_runtime_state_{}.json",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")
@@ -567,7 +567,7 @@ mod tests {
     #[test]
     fn evaluates_and_writes_allow_and_deny_audits() {
         let path = std::env::temp_dir().join(format!(
-            "agentauth_sink_{}.jsonl",
+            "delegated_sink_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")

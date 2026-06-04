@@ -304,7 +304,7 @@ mod tests {
             payload: json!({"task":"schedule"}),
         };
         let sink_path = std::env::temp_dir().join(format!(
-            "agentauth_a2a_{}.jsonl",
+            "delegated_a2a_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")
@@ -331,7 +331,7 @@ mod tests {
             payload: json!({"task":"schedule"}),
         };
         let sink_path = std::env::temp_dir().join(format!(
-            "agentauth_a2a_replay_{}.jsonl",
+            "delegated_a2a_replay_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")
@@ -379,7 +379,7 @@ mod tests {
             payload: json!({"task":"schedule"}),
         };
         let sink_path = std::env::temp_dir().join(format!(
-            "agentauth_a2a_rate_{}.jsonl",
+            "delegated_a2a_rate_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")

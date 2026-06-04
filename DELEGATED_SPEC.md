@@ -1,4 +1,4 @@
-# Agent Trust Layer Specification (v0.1 Draft)
+# Delegated Trust Layer Specification (v0.1 Draft)
 
 ## Overview
 

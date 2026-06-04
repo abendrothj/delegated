@@ -389,7 +389,7 @@ mod tests {
         })
         .to_string();
         let sink_path = std::env::temp_dir().join(format!(
-            "agentauth_mcp_{}.jsonl",
+            "delegated_mcp_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")
@@ -419,7 +419,7 @@ mod tests {
         })
         .to_string();
         let sink_path = std::env::temp_dir().join(format!(
-            "agentauth_mcp_replay_{}.jsonl",
+            "delegated_mcp_replay_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")
@@ -478,7 +478,7 @@ mod tests {
         })
         .to_string();
         let sink_path = std::env::temp_dir().join(format!(
-            "agentauth_mcp_rate_{}.jsonl",
+            "delegated_mcp_rate_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")

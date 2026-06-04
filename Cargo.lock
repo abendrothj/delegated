@@ -3,17 +3,6 @@
 version = 4
 
 [[package]]
-name = "agentauth"
-version = "0.1.0"
-dependencies = [
- "base64ct",
- "chrono",
- "ed25519-dalek",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -135,6 +124,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "delegated"
+version = "0.1.0"
+dependencies = [
+ "base64ct",
+ "chrono",
+ "ed25519-dalek",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

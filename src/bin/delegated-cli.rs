@@ -1,11 +1,11 @@
-use agentauth::models::{AgentIdentityDocument, DelegationToken};
-use agentauth::{
+use base64ct::{Base64UrlUnpadded, Encoding};
+use chrono::Utc;
+use delegated::models::{AgentIdentityDocument, DelegationToken};
+use delegated::{
     ApprovalDecision, DelegationGrantProposal, FileBackedTrustState, TOKEN_SIGNATURE_ALG_ED25519,
     default_trust_state_path, evaluate_request, record_approval_decision, render_cli_grant_summary,
     revoke_token_with_receipt, sign_delegation_token, sign_identity_document,
 };
-use base64ct::{Base64UrlUnpadded, Encoding};
-use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use serde_json::json;
 use std::env;
@@ -114,7 +114,7 @@ fn run() -> Result<ExitCode, Box<dyn Error>> {
             print_help();
             Ok(ExitCode::SUCCESS)
         }
-        other => Err(format!("unknown command: {other}. Run `agentauth-cli help`.").into()),
+        other => Err(format!("unknown command: {other}. Run `delegated-cli help`.").into()),
     }
 }
 
@@ -288,7 +288,7 @@ fn prompt_optional_line(label: &str) -> Result<Option<String>, Box<dyn Error>> {
 }
 
 fn print_help() {
-    println!("agentauth-cli");
+    println!("delegated-cli");
     println!();
     println!("Commands:");
     println!("  sign-identity <input-json> <private-key-base64url> [output-json]");

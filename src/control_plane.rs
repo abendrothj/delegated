@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn builds_report_from_exported_audit_events() {
         let path = std::env::temp_dir().join(format!(
-            "agentauth_cp_audit_{}.jsonl",
+            "delegated_cp_audit_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")

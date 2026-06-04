@@ -1,11 +1,11 @@
-# agentauth
+# delegated
 
-`agentauth` is a Rust trust layer for agent-to-agent communication.  
+`delegated` is a Rust trust layer for agent-to-agent communication.  
 It provides a protocol-agnostic trust pipeline, protocol-native adapters (HTTP/MCP/A2A), durable revocation/replay state, discovery/JWKS handlers, and CLI-first approval/revocation workflows.
 
 ## What this project is
 
-This repository is a **reference implementation** of the trust model in [`AGENT_AUTH_SPEC.md`](./AGENT_AUTH_SPEC.md).
+This repository is a **reference implementation** of the trust model in [`DELEGATED_SPEC.md`](./DELEGATED_SPEC.md).
 
 Core capabilities:
 
@@ -32,7 +32,7 @@ Use this as a base for product integration and standardization work, not as a fi
 - `src/adapters/` — HTTP, MCP, A2A adapters + adapter guardrails
 - `src/discovery.rs` — hostable discovery/JWKS request handlers
 - `src/control_plane.rs` — approval/revoke/report operations
-- `src/bin/agentauth-cli.rs` — CLI tools and lifecycle flows
+- `src/bin/delegated-cli.rs` — CLI tools and lifecycle flows
 - `schemas/` — JSON schemas for envelopes, tokens, identity, discovery docs
 - `tests/` — conformance, interop, and CLI integration coverage
 
@@ -51,15 +51,15 @@ cargo test
 ### CLI help
 
 ```bash
-cargo run --bin agentauth-cli -- help
+cargo run --bin delegated-cli -- help
 ```
 
 ## Trust state and runtime defaults
 
 By default, runtime entrypoints use **durable file-backed trust state**.
 
-- Default path: `~/.agentauth/trust-state.json`
-- Override path: `AGENTAUTH_TRUST_STATE_PATH=/custom/path/trust-state.json`
+- Default path: `~/.delegated/trust-state.json`
+- Override path: `DELEGATED_TRUST_STATE_PATH=/custom/path/trust-state.json`
 
 In-memory state is still available for explicit test/dev usage via runtime config APIs.
 
@@ -97,7 +97,7 @@ Tune using `AdapterGuardConfig` and `*_with_state_and_guard_config` adapter vari
 
 `src/discovery.rs` provides framework-agnostic request handlers over `DiscoveryService`:
 
-- `/.well-known/agentauth-issuer`
+- `/.well-known/delegated-issuer`
 - `/.well-known/jwks.json?agent_id=...`
 - `/registry/{agent_id}`
 - `/resolve/{agent_id}?protocol=...`
@@ -106,7 +106,7 @@ Use `handle_discovery_http_request` in your own HTTP server/router.
 
 ## CLI workflows
 
-`agentauth-cli` supports:
+`delegated-cli` supports:
 
 - `sign-identity`
 - `sign-token`
@@ -119,14 +119,14 @@ Use `handle_discovery_http_request` in your own HTTP server/router.
 
 ```bash
 # approve grant proposal
-cargo run --bin agentauth-cli -- \
+cargo run --bin delegated-cli -- \
   approve-grant ./proposal.json approve user:operator \
   --reason "approved for demo" \
   --token-id dlg_123 \
   --output ./approval-result.json
 
 # revoke token (persists in durable trust state)
-cargo run --bin agentauth-cli -- \
+cargo run --bin delegated-cli -- \
   revoke-token req_123 dlg_123 user:operator \
   --reason "manual revoke" \
   --output ./revocation-result.json

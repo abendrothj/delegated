@@ -1,13 +1,13 @@
-use agentauth::models::{
+use base64ct::{Base64UrlUnpadded, Encoding};
+use chrono::{TimeZone, Utc};
+use delegated::models::{
     AgentEndpoint, AgentIdentityDocument, DelegationToken, MaxSpend, PublicKeyRecord,
     RequestEnvelope, RuntimeContext, TrustProfile,
 };
-use agentauth::{
+use delegated::{
     DelegationGrantProposal, FileBackedTrustState, TOKEN_SIGNATURE_ALG_ED25519, TrustStateStore,
     sign_delegation_token, sign_identity_document,
 };
-use base64ct::{Base64UrlUnpadded, Encoding};
-use chrono::{TimeZone, Utc};
 use ed25519_dalek::SigningKey;
 use serde_json::Value;
 use std::process::Command;
@@ -160,7 +160,7 @@ fn sample_proposal() -> DelegationGrantProposal {
 #[test]
 fn cli_signs_token_with_ed25519() {
     let temp_dir = std::env::temp_dir().join(format!(
-        "agentauth_cli_sign_{}",
+        "delegated_cli_sign_{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time should be after epoch")
@@ -174,7 +174,7 @@ fn cli_signs_token_with_ed25519() {
     )
     .expect("token file should be writable");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_agentauth-cli"))
+    let output = Command::new(env!("CARGO_BIN_EXE_delegated-cli"))
         .arg("sign-token")
         .arg(token_path.to_string_lossy().to_string())
         .arg(private_key_base64url())
@@ -193,7 +193,7 @@ fn cli_signs_token_with_ed25519() {
 #[test]
 fn cli_verifies_request_and_returns_success_exit_code() {
     let temp_dir = std::env::temp_dir().join(format!(
-        "agentauth_cli_verify_{}",
+        "delegated_cli_verify_{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time should be after epoch")
@@ -208,7 +208,7 @@ fn cli_verifies_request_and_returns_success_exit_code() {
     )
     .expect("request file should be writable");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_agentauth-cli"))
+    let output = Command::new(env!("CARGO_BIN_EXE_delegated-cli"))
         .arg("verify-request")
         .arg(request_path.to_string_lossy().to_string())
         .output()
@@ -224,7 +224,7 @@ fn cli_verifies_request_and_returns_success_exit_code() {
 #[test]
 fn cli_approves_grant_and_emits_callback_payload() {
     let temp_dir = std::env::temp_dir().join(format!(
-        "agentauth_cli_approve_{}",
+        "delegated_cli_approve_{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time should be after epoch")
@@ -239,7 +239,7 @@ fn cli_approves_grant_and_emits_callback_payload() {
     )
     .expect("proposal file should be writable");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_agentauth-cli"))
+    let output = Command::new(env!("CARGO_BIN_EXE_delegated-cli"))
         .arg("approve-grant")
         .arg(proposal_path.to_string_lossy().to_string())
         .arg("approve")
@@ -269,7 +269,7 @@ fn cli_approves_grant_and_emits_callback_payload() {
 #[test]
 fn cli_revokes_token_and_persists_state_update() {
     let temp_dir = std::env::temp_dir().join(format!(
-        "agentauth_cli_revoke_{}",
+        "delegated_cli_revoke_{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time should be after epoch")
@@ -278,9 +278,9 @@ fn cli_revokes_token_and_persists_state_update() {
     std::fs::create_dir_all(&temp_dir).expect("temp directory should be creatable");
     let state_path = temp_dir.join("trust-state.json");
     let token_id = format!("dlg_cli_revoke_{}", unique_id());
-    let output = Command::new(env!("CARGO_BIN_EXE_agentauth-cli"))
+    let output = Command::new(env!("CARGO_BIN_EXE_delegated-cli"))
         .env(
-            "AGENTAUTH_TRUST_STATE_PATH",
+            "DELEGATED_TRUST_STATE_PATH",
             state_path.to_string_lossy().to_string(),
         )
         .arg("revoke-token")

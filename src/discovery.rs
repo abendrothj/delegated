@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
-pub const DISCOVERY_ISSUER_PATH: &str = "/.well-known/agentauth-issuer";
+pub const DISCOVERY_ISSUER_PATH: &str = "/.well-known/delegated-issuer";
 pub const DISCOVERY_JWKS_PATH: &str = "/.well-known/jwks.json";
 pub const DISCOVERY_REGISTRY_PREFIX: &str = "/registry/";
 pub const DISCOVERY_RESOLVE_PREFIX: &str = "/resolve/";

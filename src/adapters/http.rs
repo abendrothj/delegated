@@ -289,7 +289,7 @@ mod tests {
     #[test]
     fn returns_200_on_allow() {
         let path = std::env::temp_dir().join(format!(
-            "agentauth_http_allow_{}.jsonl",
+            "delegated_http_allow_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")
@@ -305,7 +305,7 @@ mod tests {
     #[test]
     fn returns_403_on_policy_deny() {
         let path = std::env::temp_dir().join(format!(
-            "agentauth_http_deny_{}.jsonl",
+            "delegated_http_deny_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")
@@ -341,7 +341,7 @@ mod tests {
     #[test]
     fn denies_nonce_replay_with_shared_state() {
         let path = std::env::temp_dir().join(format!(
-            "agentauth_http_replay_{}.jsonl",
+            "delegated_http_replay_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")
@@ -366,7 +366,7 @@ mod tests {
     #[test]
     fn returns_429_when_rate_limited_by_tuple() {
         let path = std::env::temp_dir().join(format!(
-            "agentauth_http_rate_limit_{}.jsonl",
+            "delegated_http_rate_limit_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")

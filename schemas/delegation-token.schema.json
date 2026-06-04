@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentauth.dev/schemas/delegation-token.schema.json",
+  "$id": "https://delegated.dev/schemas/delegation-token.schema.json",
   "title": "DelegationToken",
   "type": "object",
   "required": [

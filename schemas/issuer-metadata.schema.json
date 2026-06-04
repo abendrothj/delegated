@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentauth.dev/schemas/issuer-metadata.schema.json",
+  "$id": "https://delegated.dev/schemas/issuer-metadata.schema.json",
   "title": "IssuerMetadata",
   "type": "object",
   "required": [

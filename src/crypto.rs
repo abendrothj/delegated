@@ -4,7 +4,7 @@ use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 
 pub const TOKEN_SIGNATURE_ALG_ED25519: &str = "Ed25519";
 pub const SIGNATURE_ENCODING_BASE64URL_NO_PAD: &str = "base64url-no-pad";
-pub const SIGNATURE_WIRE_FORMAT: &str = "agentauth.detached-json.v1";
+pub const SIGNATURE_WIRE_FORMAT: &str = "delegated.detached-json.v1";
 
 const STAGE: &str = "verify_signatures";
 

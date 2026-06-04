@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentauth.dev/schemas/a2a-trust-envelope.schema.json",
+  "$id": "https://delegated.dev/schemas/a2a-trust-envelope.schema.json",
   "title": "A2aTrustEnvelope",
   "type": "object",
   "required": ["protocol", "protocol_version", "trust_claims", "a2a_payload"],

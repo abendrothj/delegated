@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentauth.dev/schemas/agent-identity-document.schema.json",
+  "$id": "https://delegated.dev/schemas/agent-identity-document.schema.json",
   "title": "AgentIdentityDocument",
   "type": "object",
   "required": [
