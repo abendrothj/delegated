@@ -1,8 +1,11 @@
 use agentauth::models::{
-    AgentEndpoint, AgentIdentityDocument, DelegationToken, PublicKeyRecord, RequestEnvelope,
-    RuntimeContext, TrustProfile,
+    AgentEndpoint, AgentIdentityDocument, DelegationToken, MaxSpend, PublicKeyRecord,
+    RequestEnvelope, RuntimeContext, TrustProfile,
 };
-use agentauth::{TOKEN_SIGNATURE_ALG_ED25519, sign_delegation_token, sign_identity_document};
+use agentauth::{
+    DelegationGrantProposal, FileBackedTrustState, TOKEN_SIGNATURE_ALG_ED25519, TrustStateStore,
+    sign_delegation_token, sign_identity_document,
+};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use chrono::{TimeZone, Utc};
 use ed25519_dalek::SigningKey;
@@ -134,6 +137,26 @@ fn signed_request_json() -> Value {
     serde_json::to_value(request).expect("request serialization should work")
 }
 
+fn sample_proposal() -> DelegationGrantProposal {
+    DelegationGrantProposal {
+        request_id: format!("req_cli_grant_{}", unique_id()),
+        delegator_id: "user:jake-abendroth".to_string(),
+        agent_id: "agent:example:scheduler:v1".to_string(),
+        owner_id: "org:example".to_string(),
+        intent: "schedule_demo".to_string(),
+        audience: vec!["tool:google-calendar".to_string()],
+        allowed_actions: vec!["calendar.create_event".to_string()],
+        max_spend: Some(MaxSpend {
+            amount: 0,
+            currency: "USD".to_string(),
+        }),
+        expires_at: Utc
+            .with_ymd_and_hms(2099, 6, 1, 20, 40, 0)
+            .single()
+            .expect("valid timestamp"),
+    }
+}
+
 #[test]
 fn cli_signs_token_with_ed25519() {
     let temp_dir = std::env::temp_dir().join(format!(
@@ -194,6 +217,91 @@ fn cli_verifies_request_and_returns_success_exit_code() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
     assert!(stdout.contains("\"allowed\": true"));
+
+    std::fs::remove_dir_all(temp_dir).expect("temp directory should be removable");
+}
+
+#[test]
+fn cli_approves_grant_and_emits_callback_payload() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "agentauth_cli_approve_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time should be after epoch")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("temp directory should be creatable");
+    let proposal_path = temp_dir.join("proposal.json");
+    let proposal = sample_proposal();
+    std::fs::write(
+        &proposal_path,
+        serde_json::to_string_pretty(&proposal).expect("proposal serialization should work"),
+    )
+    .expect("proposal file should be writable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_agentauth-cli"))
+        .arg("approve-grant")
+        .arg(proposal_path.to_string_lossy().to_string())
+        .arg("approve")
+        .arg("user:jake-abendroth")
+        .arg("--reason")
+        .arg("approved")
+        .arg("--token-id")
+        .arg("dlg_cli_grant")
+        .output()
+        .expect("CLI should execute");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let payload: Value = serde_json::from_str(&stdout).expect("approve payload should parse");
+    assert_eq!(
+        payload["operation"]["receipt"]["status"],
+        serde_json::json!("Approved")
+    );
+    assert_eq!(
+        payload["operation"]["callback"]["request_id"],
+        serde_json::json!(proposal.request_id)
+    );
+
+    std::fs::remove_dir_all(temp_dir).expect("temp directory should be removable");
+}
+
+#[test]
+fn cli_revokes_token_and_persists_state_update() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "agentauth_cli_revoke_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time should be after epoch")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&temp_dir).expect("temp directory should be creatable");
+    let state_path = temp_dir.join("trust-state.json");
+    let token_id = format!("dlg_cli_revoke_{}", unique_id());
+    let output = Command::new(env!("CARGO_BIN_EXE_agentauth-cli"))
+        .env(
+            "AGENTAUTH_TRUST_STATE_PATH",
+            state_path.to_string_lossy().to_string(),
+        )
+        .arg("revoke-token")
+        .arg("req_cli_revoke")
+        .arg(&token_id)
+        .arg("user:jake-abendroth")
+        .arg("--reason")
+        .arg("manual revoke")
+        .output()
+        .expect("CLI should execute");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    let payload: Value = serde_json::from_str(&stdout).expect("revoke payload should parse");
+    assert_eq!(payload["receipt"]["status"], serde_json::json!("Revoked"));
+    let state = FileBackedTrustState::new(state_path);
+    assert!(
+        state
+            .is_token_revoked(&token_id)
+            .expect("state query should succeed")
+    );
 
     std::fs::remove_dir_all(temp_dir).expect("temp directory should be removable");
 }

@@ -1,6 +1,8 @@
 use agentauth::models::{AgentIdentityDocument, DelegationToken};
 use agentauth::{
-    TOKEN_SIGNATURE_ALG_ED25519, evaluate_request, sign_delegation_token, sign_identity_document,
+    ApprovalDecision, DelegationGrantProposal, FileBackedTrustState, TOKEN_SIGNATURE_ALG_ED25519,
+    default_trust_state_path, evaluate_request, record_approval_decision, render_cli_grant_summary,
+    revoke_token_with_receipt, sign_delegation_token, sign_identity_document,
 };
 use base64ct::{Base64UrlUnpadded, Encoding};
 use chrono::Utc;
@@ -9,6 +11,7 @@ use serde_json::json;
 use std::env;
 use std::error::Error;
 use std::fs;
+use std::io::{self, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -44,6 +47,68 @@ fn run() -> Result<ExitCode, Box<dyn Error>> {
         "verify-request" => {
             let input = required_arg(args.next(), "input json path")?;
             verify_request_command(&input)
+        }
+        "approve-grant" => {
+            let proposal = required_arg(args.next(), "proposal json path")?;
+            let decision = required_arg(args.next(), "decision (approve|deny)")?;
+            let actor_id = required_arg(args.next(), "actor id")?;
+            let mut reason: Option<String> = None;
+            let mut token_id: Option<String> = None;
+            let mut output: Option<String> = None;
+            while let Some(flag) = args.next() {
+                match flag.as_str() {
+                    "--reason" => {
+                        reason = Some(required_arg(args.next(), "--reason value")?);
+                    }
+                    "--token-id" => {
+                        token_id = Some(required_arg(args.next(), "--token-id value")?);
+                    }
+                    "--output" => {
+                        output = Some(required_arg(args.next(), "--output value")?);
+                    }
+                    unknown => {
+                        return Err(format!("unknown flag for approve-grant: {unknown}").into());
+                    }
+                }
+            }
+            approve_grant_command(
+                &proposal,
+                &decision,
+                &actor_id,
+                reason,
+                token_id,
+                output.as_deref(),
+            )?;
+            Ok(ExitCode::SUCCESS)
+        }
+        "approve-grant-interactive" => {
+            let proposal = required_arg(args.next(), "proposal json path")?;
+            let actor_id = required_arg(args.next(), "actor id")?;
+            let output = args.next();
+            approve_grant_interactive_command(&proposal, &actor_id, output.as_deref())?;
+            Ok(ExitCode::SUCCESS)
+        }
+        "revoke-token" => {
+            let request_id = required_arg(args.next(), "request id")?;
+            let token_id = required_arg(args.next(), "token id")?;
+            let actor_id = required_arg(args.next(), "actor id")?;
+            let mut reason: Option<String> = None;
+            let mut output: Option<String> = None;
+            while let Some(flag) = args.next() {
+                match flag.as_str() {
+                    "--reason" => {
+                        reason = Some(required_arg(args.next(), "--reason value")?);
+                    }
+                    "--output" => {
+                        output = Some(required_arg(args.next(), "--output value")?);
+                    }
+                    unknown => {
+                        return Err(format!("unknown flag for revoke-token: {unknown}").into());
+                    }
+                }
+            }
+            revoke_token_command(&request_id, &token_id, &actor_id, reason, output.as_deref())?;
+            Ok(ExitCode::SUCCESS)
         }
         "help" | "--help" | "-h" => {
             print_help();
@@ -97,6 +162,84 @@ fn verify_request_command(input_path: &str) -> Result<ExitCode, Box<dyn Error>> 
     }
 }
 
+fn approve_grant_command(
+    proposal_path: &str,
+    decision_raw: &str,
+    actor_id: &str,
+    reason: Option<String>,
+    token_id: Option<String>,
+    output_path: Option<&str>,
+) -> Result<(), Box<dyn Error>> {
+    let proposal: DelegationGrantProposal =
+        serde_json::from_str(&fs::read_to_string(proposal_path)?)?;
+    let decision = parse_approval_decision(decision_raw)?;
+    let operation = record_approval_decision(
+        &proposal,
+        decision,
+        actor_id.to_string(),
+        reason,
+        Utc::now(),
+        token_id,
+    );
+    let payload = json!({
+        "grant_summary": render_cli_grant_summary(&proposal),
+        "operation": operation
+    });
+    write_json_output(&payload, output_path)
+}
+
+fn approve_grant_interactive_command(
+    proposal_path: &str,
+    actor_id: &str,
+    output_path: Option<&str>,
+) -> Result<(), Box<dyn Error>> {
+    let proposal: DelegationGrantProposal =
+        serde_json::from_str(&fs::read_to_string(proposal_path)?)?;
+    println!("{}", render_cli_grant_summary(&proposal));
+    let decision_raw = prompt_line("Decision (approve|deny): ")?;
+    let reason = prompt_optional_line("Reason (optional, press enter to skip): ")?;
+    let token_id = if decision_raw == "approve" {
+        prompt_optional_line("Token ID (optional, press enter to skip): ")?
+    } else {
+        None
+    };
+    approve_grant_command(
+        proposal_path,
+        &decision_raw,
+        actor_id,
+        reason,
+        token_id,
+        output_path,
+    )
+}
+
+fn revoke_token_command(
+    request_id: &str,
+    token_id: &str,
+    actor_id: &str,
+    reason: Option<String>,
+    output_path: Option<&str>,
+) -> Result<(), Box<dyn Error>> {
+    let mut trust_state = FileBackedTrustState::new(default_trust_state_path());
+    let operation = revoke_token_with_receipt(
+        &mut trust_state,
+        request_id.to_string(),
+        token_id.to_string(),
+        actor_id.to_string(),
+        reason,
+        Utc::now(),
+    )?;
+    write_json_output(&operation, output_path)
+}
+
+fn parse_approval_decision(value: &str) -> Result<ApprovalDecision, Box<dyn Error>> {
+    match value {
+        "approve" => Ok(ApprovalDecision::Approve),
+        "deny" => Ok(ApprovalDecision::Deny),
+        _ => Err(format!("decision must be approve or deny, got: {value}").into()),
+    }
+}
+
 fn required_arg(value: Option<String>, label: &str) -> Result<String, Box<dyn Error>> {
     value.ok_or_else(|| format!("missing required argument: {label}").into())
 }
@@ -128,6 +271,22 @@ fn write_json_output<T: serde::Serialize>(
     Ok(())
 }
 
+fn prompt_line(label: &str) -> Result<String, Box<dyn Error>> {
+    print!("{label}");
+    io::stdout().flush()?;
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    Ok(input.trim().to_string())
+}
+
+fn prompt_optional_line(label: &str) -> Result<Option<String>, Box<dyn Error>> {
+    let value = prompt_line(label)?;
+    if value.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(value))
+}
+
 fn print_help() {
     println!("agentauth-cli");
     println!();
@@ -135,4 +294,11 @@ fn print_help() {
     println!("  sign-identity <input-json> <private-key-base64url> [output-json]");
     println!("  sign-token <input-json> <private-key-base64url> [output-json]");
     println!("  verify-request <input-json>");
+    println!(
+        "  approve-grant <proposal-json> <approve|deny> <actor-id> [--reason <text>] [--token-id <id>] [--output <path>]"
+    );
+    println!("  approve-grant-interactive <proposal-json> <actor-id> [output-json]");
+    println!(
+        "  revoke-token <request-id> <token-id> <actor-id> [--reason <text>] [--output <path>]"
+    );
 }
