@@ -19,7 +19,7 @@ Initial public release.
 
 - Fail-closed evaluation pipeline: normalize → profile compatibility → signature verification → identity document lifetime → revocation / nonce consumption → token lifetime → token binding → policy checks → audit.
 - Ed25519 signature verification for both `AgentIdentityDocument` and `DelegationToken` using canonical JSON payloads.
-- `TrustProfile` gating (Developer, Production, Strict) with configurable leeway for clock skew.
+- `TrustProfile` gating (Developer, OIDC, SPIFFE) with configurable leeway for clock skew.
 - Spec versioning: `SUPPORTED_SPEC_VERSIONS` membership check for forward-compatible version negotiation.
 
 ### Protocol adapters
