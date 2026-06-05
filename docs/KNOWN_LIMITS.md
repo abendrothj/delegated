@@ -77,6 +77,11 @@ It is a production-facing artifact: read this before deploying at scale.
    - `examples/eval_benchmark.rs` is useful for local baseline comparisons.
    - It should not be treated as a representative multi-instance p95/p99 production benchmark.
 
+5. **`JsonlFileAuditSink` `NewestFirst` reads are O(limit) for the limit-only case, but O(file size) when a `since` filter is active**
+   - When `AuditOrder::NewestFirst` is used without a `since` filter, the reader seeks backward through the file in 64 KiB chunks and stops as soon as `limit` events are collected.
+   - When a `since` timestamp is provided, the reader must continue scanning backward until it finds events older than `since` (because JSONL files are not guaranteed to be strictly chronological). In the worst case (very old `since` or a large gap), this still scans the whole file.
+   - For production audit workloads at scale, forward the JSONL stream to a purpose-built log store (e.g., OpenSearch, ClickHouse, Loki) that indexes timestamps and can execute time-range queries efficiently.
+
 ## Ecosystem and maturity limits
 
 1. **Early-stage project surface**
