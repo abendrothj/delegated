@@ -4,7 +4,7 @@ use crate::delegation_ux::{
     issue_consent_receipt, issue_revocation_receipt, to_approval_callback,
 };
 use crate::engine::simulate_request_policy;
-use crate::models::{AuditEvent, PolicyCheck, Violation};
+use crate::models::{AuditEvent, HostContext, PolicyCheck, Violation};
 use crate::revocation::TrustStateAdmin;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -74,7 +74,14 @@ pub fn emergency_deny_agent(
 }
 
 pub fn simulate_policy(raw_request: &Value) -> Result<PolicySimulationResult, Violation> {
-    let checks = simulate_request_policy(raw_request, &crate::models::HostContext::default())?;
+    simulate_policy_with_host_context(raw_request, &HostContext::default())
+}
+
+pub fn simulate_policy_with_host_context(
+    raw_request: &Value,
+    host_context: &HostContext,
+) -> Result<PolicySimulationResult, Violation> {
+    let checks = simulate_request_policy(raw_request, host_context)?;
     Ok(PolicySimulationResult { checks })
 }
 
@@ -117,6 +124,7 @@ mod tests {
     use crate::models::MaxSpend;
     use crate::revocation::{InMemoryTrustState, TrustStateStore};
     use chrono::TimeZone;
+    use serde_json::json;
 
     fn sample_proposal() -> DelegationGrantProposal {
         DelegationGrantProposal {
@@ -136,6 +144,39 @@ mod tests {
                 .single()
                 .expect("valid timestamp"),
         }
+    }
+
+    fn sample_policy_simulation_request(max_depth: u16) -> Value {
+        json!({
+            "spec_version": "0.1",
+            "kind": "TrustRequestEnvelope",
+            "request_id": "req_sim_1",
+            "profile": "developer",
+            "agent_id": "agent:example:scheduler:v1",
+            "delegator_id": "user:alice",
+            "audience": "tool:google-calendar",
+            "action": "calendar.create_event",
+            "runtime_context": {},
+            "identity_document": null,
+            "delegation_token": {
+                "spec_version": "0.1",
+                "kind": "DelegationToken",
+                "token_id": "dlg_sim_1",
+                "issuer": "https://trust.example.ai",
+                "agent_id": "agent:example:scheduler:v1",
+                "delegator_id": "user:alice",
+                "owner_id": "org:example",
+                "audience": ["tool:google-calendar"],
+                "allowed_actions": ["calendar.create_event"],
+                "max_delegation_depth": max_depth,
+                "issued_at": "2026-06-01T20:10:00Z",
+                "expires_at": "2026-06-01T20:40:00Z",
+                "nonce": "nonce-sim-1",
+                "key_id": "key-2026-01",
+                "signature_alg": "Ed25519",
+                "signature": "sig"
+            }
+        })
     }
 
     #[test]
@@ -228,6 +269,7 @@ mod tests {
             AuditQuery {
                 since: None,
                 limit: 10,
+                order: crate::audit::AuditOrder::NewestFirst,
             },
         )
         .expect("report should build");
@@ -235,5 +277,37 @@ mod tests {
         assert_eq!(report.allowed_events, 1);
         assert_eq!(report.denied_events, 1);
         std::fs::remove_file(path).expect("temporary audit file should be removable");
+    }
+
+    #[test]
+    fn simulation_accepts_explicit_host_context() {
+        let request = sample_policy_simulation_request(0);
+        let denied = simulate_policy_with_host_context(
+            &request,
+            &HostContext {
+                delegation_depth: Some(1),
+                ..HostContext::default()
+            },
+        )
+        .expect("context-aware simulation should succeed");
+        assert!(
+            denied
+                .checks
+                .iter()
+                .any(|check| check.name == "delegation_depth" && !check.passed)
+        );
+
+        let host_context = HostContext {
+            delegation_depth: Some(0),
+            ..HostContext::default()
+        };
+        let allowed = simulate_policy_with_host_context(&request, &host_context)
+            .expect("context-aware simulation should succeed");
+        assert!(
+            allowed
+                .checks
+                .iter()
+                .any(|check| check.name == "delegation_depth" && check.passed)
+        );
     }
 }

@@ -48,12 +48,12 @@ pub use adapters::mcp::{
     McpJsonRpcResponse, handle_mcp_jsonrpc_request, handle_mcp_jsonrpc_request_with_runtime_config,
     handle_mcp_jsonrpc_request_with_state, handle_mcp_jsonrpc_request_with_state_and_guard_config,
 };
-pub use audit::{AuditQuery, AuditReader, AuditSink, JsonlFileAuditSink};
+pub use audit::{AuditOrder, AuditQuery, AuditReader, AuditSink, JsonlFileAuditSink};
 pub use contracts::{SPEC_VERSION_CURRENT, SUPPORTED_SPEC_VERSIONS};
 pub use control_plane::{
     ApprovalOperation, OperationalReport, PolicySimulationResult, RevocationOperation,
     build_operational_report, emergency_deny_agent, export_audit_events, record_approval_decision,
-    revoke_token_with_receipt, simulate_policy,
+    revoke_token_with_receipt, simulate_policy, simulate_policy_with_host_context,
 };
 pub use crypto::{
     SIGNATURE_ENCODING_BASE64URL_NO_PAD, SIGNATURE_WIRE_FORMAT, TOKEN_SIGNATURE_ALG_ED25519,

@@ -9,6 +9,7 @@ use axum::{
 };
 use chrono::Utc;
 use serde_json::json;
+use std::error::Error as StdError;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -73,6 +74,10 @@ impl DelegatedLayerBuilder {
     /// Requests above this limit return `413 Payload Too Large`.
     /// Default: 1 MiB.
     pub fn with_max_body_bytes(mut self, max_body_bytes: usize) -> Self {
+        assert!(
+            max_body_bytes > 0,
+            "max_body_bytes must be greater than zero"
+        );
         self.max_body_bytes = max_body_bytes;
         self
     }
@@ -93,7 +98,7 @@ impl DelegatedLayerBuilder {
 /// The layer reads the raw JSON request body, runs it through the full trust
 /// evaluation pipeline (normalize → signatures → lifetime → revocation → policy
 /// → audit), and either passes the request to the inner service (on allow) or
-/// returns a `403 Forbidden` JSON response (on deny). A `429` is returned when
+/// returns a `403 Forbidden` JSON response (on deny). A `500` is returned when
 /// the audit sink fails, `400` for malformed bodies, and `413` for request
 /// bodies above the configured size limit.
 ///
@@ -177,7 +182,7 @@ where
             let bytes = match axum::body::to_bytes(body, max_body_bytes).await {
                 Ok(b) => b,
                 Err(e) => {
-                    if e.to_string().contains("length limit exceeded") {
+                    if is_body_limit_error(&e) {
                         return Ok(json_response(
                             StatusCode::PAYLOAD_TOO_LARGE,
                             json!({
@@ -243,6 +248,20 @@ where
             }
         })
     }
+}
+
+fn is_body_limit_error(error: &axum::Error) -> bool {
+    let mut current: Option<&(dyn StdError + 'static)> = Some(error);
+    while let Some(err) = current {
+        if err
+            .downcast_ref::<http_body_util::LengthLimitError>()
+            .is_some()
+        {
+            return true;
+        }
+        current = err.source();
+    }
+    false
 }
 
 fn json_response(status: StatusCode, body: serde_json::Value) -> Response {

@@ -50,6 +50,14 @@ It is a production-facing artifact: read this before deploying at scale.
    - Revocation backend outages intentionally deny requests.
    - This protects security but may impact availability until dependencies recover.
 
+5. **Adapter guard is process-local**
+   - Guard counters are maintained in process-local sharded maps and reset on process restart.
+   - Multi-instance global throttling still requires infrastructure-level controls (gateway/shared counters).
+
+6. **Convenience runtime state is process-local**
+   - Default convenience APIs use process-shared in-memory trust state (replay persistence across calls in one process).
+   - Cross-instance persistence still requires a shared backend (for example Redis or a durable file path for single-instance deployments).
+
 ## Performance limits
 
 1. **Throughput is environment-dependent**
@@ -60,6 +68,10 @@ It is a production-facing artifact: read this before deploying at scale.
 
 3. **No internal queueing/backpressure subsystem**
    - Rate/concurrency protection is adapter-level (`guard`) and infrastructure-level controls are still required.
+
+4. **Benchmark example is not a production SLA measurement**
+   - `examples/eval_benchmark.rs` is useful for local baseline comparisons.
+   - It should not be treated as a representative multi-instance p95/p99 production benchmark.
 
 ## Ecosystem and maturity limits
 
@@ -77,4 +89,3 @@ It is a production-facing artifact: read this before deploying at scale.
 2. **Schema and model alignment follows code authority**
    - Rust model/runtime behavior is authoritative.
    - Schema/docs are maintained to match implementation, but should be verified during upgrades.
-

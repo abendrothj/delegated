@@ -4,8 +4,10 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+#[cfg(not(test))]
+use std::sync::OnceLock;
 use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,13 +127,26 @@ pub fn default_trust_state_path() -> PathBuf {
     PathBuf::from(".delegated").join("trust-state.json")
 }
 
-pub fn trust_state_from_runtime_config(config: &RuntimeTrustConfig) -> Box<dyn TrustStateStore> {
+#[cfg(test)]
+fn default_in_memory_runtime_store() -> Arc<dyn TrustStateStore> {
+    Arc::new(InMemoryTrustState::new())
+}
+
+#[cfg(not(test))]
+fn default_in_memory_runtime_store() -> Arc<dyn TrustStateStore> {
+    static STATE: OnceLock<Arc<InMemoryTrustState>> = OnceLock::new();
+    STATE
+        .get_or_init(|| Arc::new(InMemoryTrustState::new()))
+        .clone()
+}
+
+pub fn trust_state_from_runtime_config(config: &RuntimeTrustConfig) -> Arc<dyn TrustStateStore> {
     match &config.backend {
         TrustStateBackend::DurableDefault => {
-            Box::new(FileBackedTrustState::new(default_trust_state_path()))
+            Arc::new(FileBackedTrustState::new(default_trust_state_path()))
         }
-        TrustStateBackend::DurablePath(path) => Box::new(FileBackedTrustState::new(path.clone())),
-        TrustStateBackend::InMemory => Box::new(InMemoryTrustState::new()),
+        TrustStateBackend::DurablePath(path) => Arc::new(FileBackedTrustState::new(path.clone())),
+        TrustStateBackend::InMemory => default_in_memory_runtime_store(),
     }
 }
 
@@ -212,9 +227,13 @@ impl TrustStateStore for InMemoryTrustState {
     ) -> Result<bool, TrustStateError> {
         self.ensure_available()?;
         let mut inner = self.lock()?;
+        // Prune against a stable reference that never exceeds the current token's validity.
+        // This avoids evicting earlier-but-still-valid consumed nonces when a later-expiry
+        // token arrives, while keeping replay behavior deterministic for older test fixtures.
+        let prune_before = std::cmp::min(Utc::now(), valid_until);
         inner
             .consumed_nonces
-            .retain(|_, expires_at| *expires_at >= valid_until);
+            .retain(|_, expires_at| *expires_at >= prune_before);
         if inner.consumed_nonces.contains_key(nonce) {
             return Ok(false);
         }
@@ -406,9 +425,10 @@ impl TrustStateStore for FileBackedTrustState {
         self.ensure_available()?;
         let _lock = self.acquire_lock()?;
         let mut persisted = self.load_persisted()?;
+        let prune_before = std::cmp::min(Utc::now(), valid_until);
         persisted
             .consumed_nonces
-            .retain(|_, expires_at| *expires_at >= valid_until);
+            .retain(|_, expires_at| *expires_at >= prune_before);
         if persisted.consumed_nonces.contains_key(nonce) {
             return Ok(false);
         }
@@ -477,6 +497,7 @@ struct PersistedTrustState {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+    use proptest::prelude::*;
 
     fn valid_until() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2099, 1, 1, 0, 0, 0)
@@ -496,6 +517,30 @@ mod tests {
             !store
                 .consume_nonce("nonce-1", valid_until())
                 .expect("second consume should be blocked")
+        );
+    }
+
+    #[test]
+    fn in_memory_nonce_replay_is_blocked_with_mixed_expiries() {
+        let store = InMemoryTrustState::new();
+        let now = Utc::now();
+        let first_expiry = now + chrono::Duration::minutes(5);
+        let second_expiry = now + chrono::Duration::minutes(30);
+
+        assert!(
+            store
+                .consume_nonce("nonce-short", first_expiry)
+                .expect("first consume should succeed")
+        );
+        assert!(
+            store
+                .consume_nonce("nonce-long", second_expiry)
+                .expect("different nonce should succeed")
+        );
+        assert!(
+            !store
+                .consume_nonce("nonce-short", first_expiry)
+                .expect("replay of first nonce should be blocked")
         );
     }
 
@@ -605,5 +650,60 @@ mod tests {
                 .expect("query should succeed")
         );
         std::fs::remove_file(&path).expect("state file should be removable");
+    }
+
+    #[test]
+    fn file_store_nonce_replay_is_blocked_with_mixed_expiries() {
+        let path = std::env::temp_dir().join(format!(
+            "delegated_trust_state_mixed_replay_{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        ));
+        let store = FileBackedTrustState::new(path.clone());
+        let now = Utc::now();
+        let first_expiry = now + chrono::Duration::minutes(5);
+        let second_expiry = now + chrono::Duration::minutes(30);
+
+        assert!(
+            store
+                .consume_nonce("nonce-short", first_expiry)
+                .expect("first consume should succeed")
+        );
+        assert!(
+            store
+                .consume_nonce("nonce-long", second_expiry)
+                .expect("different nonce should succeed")
+        );
+        assert!(
+            !store
+                .consume_nonce("nonce-short", first_expiry)
+                .expect("replay of first nonce should be blocked")
+        );
+        std::fs::remove_file(&path).expect("state file should be removable");
+    }
+
+    proptest! {
+        #[test]
+        fn in_memory_nonce_replay_is_blocked_for_random_nonce_sets(
+            nonces in proptest::collection::hash_set("[a-z0-9]{1,24}", 1..32),
+            expiry_offsets in proptest::collection::vec(1u16..120, 1..32),
+        ) {
+            let store = InMemoryTrustState::new();
+            let now = Utc::now();
+            for (nonce, offset_minutes) in nonces.iter().zip(expiry_offsets.iter().cycle()) {
+                let expiry = now + chrono::Duration::minutes(i64::from(*offset_minutes));
+                prop_assert!(store
+                    .consume_nonce(nonce, expiry)
+                    .expect("first consume should succeed"));
+            }
+            for (nonce, offset_minutes) in nonces.iter().zip(expiry_offsets.iter().cycle()) {
+                let expiry = now + chrono::Duration::minutes(i64::from(*offset_minutes));
+                prop_assert!(!store
+                    .consume_nonce(nonce, expiry)
+                    .expect("replay consume should be blocked"));
+            }
+        }
     }
 }

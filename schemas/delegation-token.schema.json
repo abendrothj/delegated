@@ -51,7 +51,7 @@
           "items": { "type": "string", "minLength": 1 }
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "max_spend": {
       "type": "object",
@@ -60,7 +60,7 @@
         "amount": { "type": "integer" },
         "currency": { "type": "string", "minLength": 1 }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "max_delegation_depth": { "type": "integer", "minimum": 0 },
     "approval_policy": { "type": "object" },
@@ -71,5 +71,5 @@
     "signature_alg": { "type": "string", "const": "Ed25519" },
     "signature": { "type": "string", "minLength": 1 }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

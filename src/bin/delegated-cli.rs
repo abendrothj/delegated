@@ -3,8 +3,9 @@ use chrono::Utc;
 use delegated::models::{AgentIdentityDocument, DelegationToken};
 use delegated::{
     ApprovalDecision, DelegationGrantProposal, FileBackedTrustState, TOKEN_SIGNATURE_ALG_ED25519,
-    default_trust_state_path, evaluate_request, record_approval_decision, render_cli_grant_summary,
-    revoke_token_with_receipt, sign_delegation_token, sign_identity_document,
+    default_trust_state_path, evaluate_request_with_state, record_approval_decision,
+    render_cli_grant_summary, revoke_token_with_receipt, sign_delegation_token,
+    sign_identity_document,
 };
 use ed25519_dalek::SigningKey;
 use serde_json::json;
@@ -146,7 +147,13 @@ fn sign_token_command(
 
 fn verify_request_command(input_path: &str) -> Result<ExitCode, Box<dyn Error>> {
     let raw: serde_json::Value = serde_json::from_str(&fs::read_to_string(input_path)?)?;
-    let (decision, _audit) = evaluate_request(&raw, Utc::now());
+    let trust_state = FileBackedTrustState::new(default_trust_state_path());
+    let (decision, _audit) = evaluate_request_with_state(
+        &raw,
+        Utc::now(),
+        &trust_state,
+        &delegated::HostContext::default(),
+    );
     println!(
         "{}",
         serde_json::to_string_pretty(&json!({

@@ -22,6 +22,8 @@ let layer = DelegatedLayerBuilder::new(trust_state, audit_sink)
     .build();
 ```
 
+`InMemoryAsyncTrustState` is for local/dev validation. Use a shared backend (for example `RedisTrustStateStore`) before multi-instance production deployment.
+
 Attach this layer before protected handlers.
 
 ## 3. Validate with signed sample request
@@ -47,3 +49,4 @@ Send to your protected route as JSON.
 ./scripts/conformance.sh
 ```
 
+For third-party adapter deployments, run `./scripts/external_interop.sh` with endpoint env vars to validate real interoperability.

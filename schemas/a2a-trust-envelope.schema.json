@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://delegated.dev/schemas/a2a-trust-envelope.schema.json",
   "title": "A2aTrustEnvelope",
+  "description": "Shared-claims wrapper used by wire helpers (`wrap_a2a_request`/`unwrap_a2a_claims`), not the raw A2A adapter request shape.",
   "type": "object",
   "required": ["protocol", "protocol_version", "trust_claims", "a2a_payload"],
   "properties": {
@@ -12,5 +13,5 @@
     },
     "a2a_payload": {}
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

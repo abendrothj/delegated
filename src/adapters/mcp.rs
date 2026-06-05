@@ -107,6 +107,26 @@ pub fn handle_mcp_jsonrpc_request_with_state_and_guard_config(
         );
     }
 
+    let method = match object.get("method").and_then(Value::as_str) {
+        Some(method) => method,
+        None => {
+            return jsonrpc_error(
+                id,
+                -32600,
+                "invalid request: method must be a string".to_string(),
+                Some(json!({"stage":"mcp_adapter"})),
+            );
+        }
+    };
+    if method != "tools.call" {
+        return jsonrpc_error(
+            id,
+            -32601,
+            format!("method not found: {method}"),
+            Some(json!({"stage":"mcp_adapter"})),
+        );
+    }
+
     let params = match object.get("params").and_then(Value::as_object) {
         Some(params) => params,
         None => {
@@ -529,5 +549,37 @@ mod tests {
             Some(&json!("rate limit exceeded for agent/delegator tuple"))
         );
         std::fs::remove_file(sink_path).expect("temporary audit file should be removable");
+    }
+
+    #[test]
+    fn rejects_mcp_method_other_than_tools_call() {
+        let nonce = unique_nonce("nonce-mcp-bad-method");
+        let body = json!({
+            "jsonrpc":"2.0",
+            "id":"msg-method-1",
+            "method":"prompts.list",
+            "params":{
+                "_trust": signed_shared_claims(&nonce)
+            }
+        })
+        .to_string();
+        let sink_path = std::env::temp_dir().join(format!(
+            "delegated_mcp_method_{}.jsonl",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        ));
+        let sink = JsonlFileAuditSink::new(sink_path.clone());
+        let response = handle_mcp_jsonrpc_request(&body, now(), &sink);
+        assert_eq!(
+            response
+                .error
+                .as_ref()
+                .and_then(|e| e.get("code"))
+                .and_then(|c| c.as_i64()),
+            Some(-32601)
+        );
+        let _ = std::fs::remove_file(sink_path);
     }
 }

@@ -577,6 +577,28 @@ mod tests {
     }
 
     #[test]
+    fn denies_when_spend_currency_mismatches_token_max_spend_currency() {
+        let mut request = valid_request();
+        request["runtime_context"] = json!({
+            "requested_spend": 10,
+            "spend_currency": "EUR"
+        });
+        request["delegation_token"]["max_spend"] = json!({
+            "amount": 20,
+            "currency": "USD"
+        });
+        resign_token(&mut request);
+
+        let (decision, _event) = evaluate_request(&request, now());
+        assert!(!decision.allowed);
+        assert_eq!(decision.stage, "evaluate_policy");
+        assert_eq!(
+            decision.reason,
+            "requested spend currency does not match token max_spend currency"
+        );
+    }
+
+    #[test]
     fn denies_when_cognitive_thresholds_fail() {
         let request = valid_request();
         let trust_state = InMemoryTrustState::new();

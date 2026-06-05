@@ -455,6 +455,15 @@ impl AgentIdentityDocumentBuilder {
                 "expires_at must be after created_at",
             ));
         }
+        if self.supported_protocols.is_empty() {
+            return Err(IssuanceError::missing("supported_protocols"));
+        }
+        if self.supported_auth_methods.is_empty() {
+            return Err(IssuanceError::missing("supported_auth_methods"));
+        }
+        if self.endpoints.is_empty() {
+            return Err(IssuanceError::missing("endpoints"));
+        }
 
         let verifying_bytes = signing_key.verifying_key().to_bytes();
         let mut public_keys = vec![PublicKeyRecord {
@@ -596,6 +605,9 @@ impl RequestEnvelopeBuilder {
     }
 
     pub fn build(self) -> Result<RequestEnvelope, IssuanceError> {
+        let identity_document = self
+            .identity_document
+            .ok_or_else(|| IssuanceError::missing("identity_document"))?;
         let token = self.token.ok_or_else(|| IssuanceError::missing("token"))?;
         let audience = self
             .audience
@@ -623,7 +635,7 @@ impl RequestEnvelopeBuilder {
             action,
             resource: self.resource,
             runtime_context: self.runtime_context.unwrap_or_default(),
-            identity_document: self.identity_document,
+            identity_document: Some(identity_document),
             token,
         })
     }
@@ -683,6 +695,20 @@ mod tests {
             .build_and_sign(&key())
             .expect_err("missing audience should fail");
         assert_eq!(err.field, "audience");
+    }
+
+    #[test]
+    fn identity_builder_rejects_missing_transport_metadata() {
+        let err = AgentIdentityDocumentBuilder::new()
+            .agent_id("agent:example:scheduler:v1")
+            .owner_id("org:example")
+            .issuer("https://trust.example.ai")
+            .identity_type("spiffe")
+            .subject("spiffe://example.ai/agents/scheduler")
+            .key_id("key-2026-01")
+            .build_and_sign(&key())
+            .expect_err("missing transport metadata should fail");
+        assert_eq!(err.field, "supported_protocols");
     }
 
     #[test]
@@ -776,5 +802,28 @@ mod tests {
             &crate::models::HostContext::default(),
         );
         assert!(decision.allowed, "unexpected deny: {}", decision.reason);
+    }
+
+    #[test]
+    fn request_envelope_builder_requires_identity_document() {
+        let token = DelegationTokenBuilder::new()
+            .issuer("https://trust.example.ai")
+            .agent_id("agent:example:scheduler:v1")
+            .delegator_id("user:alice")
+            .owner_id("org:example")
+            .audience("tool:google-calendar")
+            .allowed_action("calendar.create_event")
+            .key_id("key-2026-01")
+            .expires_in(Duration::hours(1))
+            .build_and_sign(&key())
+            .expect("token build should succeed");
+
+        let err = RequestEnvelopeBuilder::new()
+            .token(token)
+            .audience("tool:google-calendar")
+            .action("calendar.create_event")
+            .build()
+            .expect_err("missing identity document should fail");
+        assert_eq!(err.field, "identity_document");
     }
 }

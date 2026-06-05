@@ -30,7 +30,7 @@
         "target_email": { "type": "string", "minLength": 1 },
         "target_calendar_id": { "type": "string", "minLength": 1 }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "identity_document": {
       "$ref": "agent-identity-document.schema.json"
@@ -39,5 +39,5 @@
       "$ref": "delegation-token.schema.json"
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

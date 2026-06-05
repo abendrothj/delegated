@@ -49,6 +49,12 @@ impl ClientError {
             message: e.to_string(),
         }
     }
+    fn invalid_response_message(message: impl Into<String>) -> Self {
+        Self {
+            kind: ClientErrorKind::InvalidResponse,
+            message: message.into(),
+        }
+    }
 }
 
 /// The parsed response from a delegated HTTP trust endpoint.
@@ -77,6 +83,13 @@ pub struct McpTrustResponse {
 impl McpTrustResponse {
     pub fn is_allowed(&self) -> bool {
         self.response.error.is_none()
+            && self
+                .response
+                .result
+                .as_ref()
+                .and_then(|r| r.get("allowed"))
+                .and_then(Value::as_bool)
+                == Some(true)
     }
 }
 
@@ -177,23 +190,13 @@ impl DelegatedClient {
 
         let status_code = resp.status().as_u16();
         let body: Value = resp.json().await.map_err(ClientError::invalid_response)?;
+        let parsed = parse_http_trust_response(&body)?;
 
         Ok(HttpTrustResponse {
             status_code,
-            allowed: body
-                .get("allowed")
-                .and_then(Value::as_bool)
-                .unwrap_or(false),
-            stage: body
-                .get("stage")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-            reason: body
-                .get("reason")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
+            allowed: parsed.allowed,
+            stage: parsed.stage,
+            reason: parsed.reason,
         })
     }
 
@@ -227,7 +230,10 @@ impl DelegatedClient {
 
         let trust_value = serde_json::to_value(&claims).map_err(ClientError::serialization)?;
 
-        let mut params = extra_params.as_object().cloned().unwrap_or_default();
+        let mut params = extra_params
+            .as_object()
+            .cloned()
+            .ok_or_else(|| ClientError::serialization("extra_params must be a JSON object"))?;
         params.insert("_trust".to_string(), trust_value);
 
         let body = json!({
@@ -306,5 +312,79 @@ impl DelegatedClient {
             status_code,
             response,
         })
+    }
+}
+
+fn parse_http_trust_response(body: &Value) -> Result<HttpTrustResponse, ClientError> {
+    let object = body
+        .as_object()
+        .ok_or_else(|| ClientError::invalid_response_message("response body must be an object"))?;
+    let allowed = object
+        .get("allowed")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| {
+            ClientError::invalid_response_message("response body field `allowed` must be a bool")
+        })?;
+    let stage = object
+        .get("stage")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            ClientError::invalid_response_message("response body field `stage` must be a string")
+        })?
+        .to_string();
+    let reason = object
+        .get("reason")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            ClientError::invalid_response_message("response body field `reason` must be a string")
+        })?
+        .to_string();
+
+    Ok(HttpTrustResponse {
+        status_code: 0,
+        allowed,
+        stage,
+        reason,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mcp_is_allowed_requires_result_allow_true() {
+        let denied_like = McpTrustResponse {
+            status_code: 200,
+            response: McpJsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                id: Some(json!(1)),
+                result: Some(json!({"allowed": false})),
+                error: None,
+            },
+        };
+        assert!(!denied_like.is_allowed());
+
+        let allowed = McpTrustResponse {
+            status_code: 200,
+            response: McpJsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                id: Some(json!(1)),
+                result: Some(json!({"allowed": true})),
+                error: None,
+            },
+        };
+        assert!(allowed.is_allowed());
+    }
+
+    #[test]
+    fn parse_http_trust_response_requires_expected_types() {
+        let error = parse_http_trust_response(&json!({
+            "allowed": "yes",
+            "stage": 1,
+            "reason": null
+        }))
+        .expect_err("invalid body should be rejected");
+        assert_eq!(error.kind, ClientErrorKind::InvalidResponse);
     }
 }

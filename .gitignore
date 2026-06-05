@@ -1,1 +1,13 @@
 /target
+.DS_Store
+*.swp
+*.swo
+*.tmp
+*.log
+.idea/
+.vscode/
+.coverage
+*.profraw
+*.profdata
+audit.jsonl
+tmp/

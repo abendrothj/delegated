@@ -69,6 +69,26 @@ pub async fn handle_mcp_jsonrpc_request_with_async_state_and_guard_config(
         );
     }
 
+    let method = match object.get("method").and_then(Value::as_str) {
+        Some(method) => method,
+        None => {
+            return jsonrpc_error(
+                id,
+                -32600,
+                "invalid request: method must be a string".to_string(),
+                Some(json!({"stage":"mcp_adapter"})),
+            );
+        }
+    };
+    if method != "tools.call" {
+        return jsonrpc_error(
+            id,
+            -32601,
+            format!("method not found: {method}"),
+            Some(json!({"stage":"mcp_adapter"})),
+        );
+    }
+
     let params = match object.get("params").and_then(Value::as_object) {
         Some(params) => params,
         None => {
@@ -400,5 +420,51 @@ mod tests {
         assert!(first.error.is_none());
         assert!(second.error.is_some());
         std::fs::remove_file(path).expect("temporary audit file should be removable");
+    }
+
+    #[tokio::test]
+    async fn async_mcp_rejects_method_other_than_tools_call() {
+        let nonce = format!(
+            "nonce-mcp-async-method-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("epoch")
+                .as_nanos()
+        );
+        let body = json!({
+            "jsonrpc": "2.0",
+            "id": "msg-async-method",
+            "method": "resources.read",
+            "params": {
+                "_trust": signed_claims(&nonce)
+            }
+        })
+        .to_string();
+        let state = InMemoryAsyncTrustState::new();
+        let path = std::env::temp_dir().join(format!(
+            "delegated_mcp_async_method_{}.jsonl",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("epoch")
+                .as_nanos()
+        ));
+        let sink = JsonlFileAuditSink::new(path.clone());
+        let response = handle_mcp_jsonrpc_request_with_async_state(
+            &body,
+            now(),
+            &sink,
+            &state,
+            &HostContext::default(),
+        )
+        .await;
+        assert_eq!(
+            response
+                .error
+                .as_ref()
+                .and_then(|e| e.get("code"))
+                .and_then(|c| c.as_i64()),
+            Some(-32601)
+        );
+        let _ = std::fs::remove_file(path);
     }
 }

@@ -8,5 +8,5 @@ echo "Running conformance suites..."
 cargo test --test conformance
 cargo test --test interop_harness
 cargo test --features "axum,client" --test integration_server
+cargo test --features "client,async" --test external_interop
 echo "Conformance suites passed."
-

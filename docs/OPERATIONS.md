@@ -18,10 +18,33 @@ Run before deploy:
 ./scripts/release_check.sh
 ```
 
+Dependency review quick pass:
+
+```bash
+cargo tree
+cargo tree -i serde_json
+```
+
+Release provenance check is included in `release_check.sh` (`scripts/verify_release_provenance.sh`).
+For tag-cut/release candidates, run with strict enforcement:
+
+```bash
+DELEGATED_REQUIRE_VERSION_TAG_ON_HEAD=1 ./scripts/verify_release_provenance.sh
+```
+
 Run conformance regression:
 
 ```bash
 ./scripts/conformance.sh
+```
+
+Run external interop checks against third-party adapter deployments:
+
+```bash
+DELEGATED_INTEROP_HTTP_URL=https://interop.example.com/trust \
+DELEGATED_INTEROP_MCP_URL=https://interop.example.com/mcp \
+DELEGATED_INTEROP_A2A_URL=https://interop.example.com/a2a \
+./scripts/external_interop.sh
 ```
 
 ## Runtime health signals

@@ -9,6 +9,7 @@ Use this checklist before every production rollout.
 - [ ] `cargo test`
 - [ ] `./scripts/conformance.sh`
 - [ ] `./scripts/release_check.sh`
+- [ ] `cargo tree` reviewed for unexpected transitive changes
 
 ## B. Configuration and deployment
 
@@ -44,4 +45,3 @@ Use this checklist before every production rollout.
 - Policy checks: `src/policy.rs`
 - Audit pipeline: `src/engine.rs`, `src/audit.rs`
 - Axum size limit handling: `src/adapters/axum_layer.rs`
-

@@ -14,12 +14,41 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Added `examples/eval_benchmark.rs` for quick local evaluation throughput baselines.
 - Added comprehensive threat model (`docs/THREAT_MODEL.md`) and mapped production security checklist (`docs/SECURITY_CHECKLIST.md`).
 - Added explicit production-facing known limits document (`docs/KNOWN_LIMITS.md`).
+- Fixed nonce retention logic in sync trust-state stores to prune by current time, preserving replay protection across mixed token expiries.
+- Added regression coverage for mixed-expiry nonce replay in sync and async trust-state tests.
+- Updated CLI `verify-request` to use durable file-backed trust state by default (matching CLI operational expectations).
+- Updated docs to prefer `default_trust_state_path()` over literal `~` paths in trust-state examples.
+- Enforced currency matching in `max_spend` policy checks (`runtime_context.spend_currency` must match token `max_spend.currency`).
+- Fixed MCP adapter method validation (sync + async adapters now require JSON-RPC `method == "tools.call"`).
+- Hardened axum oversized-body handling to classify limit errors by type (not string matching), and documented/guarded body-limit behavior.
+- Hardened client response handling:
+  - HTTP trust responses now require typed `allowed`/`stage`/`reason` fields (malformed payloads return `InvalidResponse`).
+  - MCP requests now require `extra_params` to be a JSON object (invalid caller input is rejected).
+  - `McpTrustResponse::is_allowed()` now requires semantic allow (`result.allowed == true`) in addition to absence of error.
+- Made audit-log reads resilient to malformed JSONL lines (skip bad records, keep readable history).
+- Reduced adapter-guard tuple-state growth by sweeping expired timestamp buckets and removing idle tuple keys.
+- Reduced adapter-guard lock contention by moving guard state to sharded mutex maps.
+- Added ordered audit-query reads with newest-first default (`AuditOrder`) for incident-response ergonomics.
+- Added `simulate_policy_with_host_context` so control-plane policy simulation can use trusted host signals explicitly.
+- Tightened issuance builder contracts:
+  - `RequestEnvelopeBuilder::build` now requires `identity_document`.
+  - `AgentIdentityDocumentBuilder::build_and_sign` now requires `supported_protocols`, `supported_auth_methods`, and `endpoints`.
+- Tightened core trust schemas by disallowing unspecified extra fields in canonical request/token/identity/shared-claims structures.
+- Clarified MCP/A2A wrapper schema intent as wire-helper envelopes (not raw adapter request contracts).
+- Expanded CI coverage to a Linux/macOS/Windows core matrix and split release-only checks into a dedicated Ubuntu job.
+- Simplified release check script to a single all-features test pass and improved operational dependency-review guidance.
+- Expanded repository hygiene defaults in `.gitignore` for common local/editor/temp artifacts.
+- Added property-based replay regression coverage (`proptest`) for randomized nonce sets in trust-state enforcement.
+- Runtime convenience APIs now use process-shared in-memory trust state by default, preserving replay checks across calls in the same process.
+- Added release provenance verification (`scripts/verify_release_provenance.sh`) and wired it into CI/release checks to catch tag/version drift.
+- Added external interoperability harness (`tests/external_interop.rs`) and runner script (`scripts/external_interop.sh`) for validating third-party HTTP/MCP/A2A adapters.
 
 ### Production starter pack
 
 - Added operations runbook (`docs/OPERATIONS.md`) for deployment, monitoring, and incident workflows.
 - Added 30-minute integration guide (`docs/INTEGRATION_GUIDE.md`) for first production adoption.
 - Added `scripts/conformance.sh` and `scripts/release_check.sh` for repeatable solo-team validation workflows.
+- Added standardized implementation spec (`SPEC.md`) as the canonical normative behavior contract.
 
 ## [0.1.1] — 2026-06-04
 

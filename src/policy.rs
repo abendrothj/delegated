@@ -192,6 +192,18 @@ pub fn check_max_spend(envelope: &RequestEnvelope) -> PolicyCheck {
             "no requested spend provided for spend policy check",
         );
     };
+    let Some(spend_currency) = envelope.runtime_context.spend_currency.as_ref() else {
+        return fail(
+            "max_spend",
+            "requested spend requires runtime_context.spend_currency when token max_spend is configured",
+        );
+    };
+    if spend_currency != &max_spend.currency {
+        return fail(
+            "max_spend",
+            "requested spend currency does not match token max_spend currency",
+        );
+    }
 
     if requested_spend <= max_spend.amount {
         return pass("max_spend", "requested spend is within token max_spend");

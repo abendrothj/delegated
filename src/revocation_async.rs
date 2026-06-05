@@ -144,6 +144,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn async_nonce_replay_is_blocked_with_mixed_expiries() {
+        let state = InMemoryAsyncTrustState::new();
+        let now = Utc::now();
+        let first_expiry = now + chrono::Duration::minutes(5);
+        let second_expiry = now + chrono::Duration::minutes(30);
+
+        assert!(
+            state
+                .consume_nonce("nonce-short", first_expiry)
+                .await
+                .expect("first consume should succeed")
+        );
+        assert!(
+            state
+                .consume_nonce("nonce-long", second_expiry)
+                .await
+                .expect("different nonce should succeed")
+        );
+        assert!(
+            !state
+                .consume_nonce("nonce-short", first_expiry)
+                .await
+                .expect("replay of first nonce should be blocked")
+        );
+    }
+
+    #[tokio::test]
     async fn async_revocation_persists_in_memory() {
         let state = InMemoryAsyncTrustState::new();
         state

@@ -31,9 +31,11 @@ cargo run --release --example eval_benchmark -- 20000
 
 ## Production starter pack
 
+- Standardized spec: [`SPEC.md`](SPEC.md)
 - Operations runbook: [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
 - 30-minute integration path: [`docs/INTEGRATION_GUIDE.md`](docs/INTEGRATION_GUIDE.md)
 - Conformance runner: `./scripts/conformance.sh`
+- External interop runner: `./scripts/external_interop.sh` (requires endpoint env vars)
 - Release gate runner: `./scripts/release_check.sh`
 
 ## Feature flags
@@ -167,8 +169,10 @@ state.clear_emergency_deny_list()?;
 state.flush_expired_nonces(chrono::Utc::now())?;
 
 // File-backed (advisory lock, CLI / single-process only)
-let state = FileBackedTrustState::new("~/.delegated/trust-state.json");
+let state = FileBackedTrustState::new(delegated::default_trust_state_path());
 ```
+
+For convenience entry points that do not accept explicit state (`evaluate_request`, `evaluate_and_audit`, and default adapter wrappers), in-memory runtime state is now process-shared so nonce replay protection persists across calls in the same process.
 
 **Async** (Redis for production):
 
@@ -182,7 +186,10 @@ let state = Arc::new(RedisTrustStateStore::connect("redis://127.0.0.1").await?);
 ## Revocation and control plane
 
 ```rust
-use delegated::{revoke_token_with_receipt, emergency_deny_agent, InMemoryTrustState};
+use delegated::{
+    revoke_token_with_receipt, emergency_deny_agent, simulate_policy_with_host_context,
+    HostContext, InMemoryTrustState
+};
 
 let state = InMemoryTrustState::new();
 // Revoke with an auditable receipt
@@ -192,6 +199,9 @@ let op = revoke_token_with_receipt(
 )?;
 println!("receipt: {}", op.receipt.request_id);
 ```
+
+`simulate_policy` runs **policy checks only** (no signature, lifetime, revocation, or binding stages).  
+Use `simulate_policy_with_host_context` when you need simulation results that reflect trusted deployment signals (for example delegation depth).
 
 ## Trust pipeline
 
@@ -236,7 +246,7 @@ delegated-cli sign-identity identity.json <base64url-private-key>
 # Sign a delegation token
 delegated-cli sign-token token.json <base64url-private-key>
 
-# Verify a request envelope offline
+# Verify a request envelope offline (uses durable CLI trust state path)
 delegated-cli verify-request request.json
 
 # Interactive grant approval

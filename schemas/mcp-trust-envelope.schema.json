@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://delegated.dev/schemas/mcp-trust-envelope.schema.json",
   "title": "McpTrustEnvelope",
+  "description": "Shared-claims wrapper used by wire helpers (`wrap_mcp_request`/`unwrap_mcp_claims`), not the raw MCP JSON-RPC adapter request.",
   "type": "object",
   "required": ["protocol", "protocol_version", "trust_claims", "mcp_payload"],
   "properties": {
@@ -12,5 +13,5 @@
     },
     "mcp_payload": {}
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }
