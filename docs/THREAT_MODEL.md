@@ -1,6 +1,6 @@
 # Threat Model
 
-This document defines the security boundaries and attacker model for `delegated`.
+This document defines the security boundaries and attacker model for `signet`.
 
 See also: [`KNOWN_LIMITS.md`](KNOWN_LIMITS.md)
 
@@ -70,8 +70,8 @@ See also: [`KNOWN_LIMITS.md`](KNOWN_LIMITS.md)
    - `src/engine.rs::evaluate_and_audit*`
    - `src/audit.rs::JsonlFileAuditSink`
 10. **Axum request-size guard**
-   - `src/adapters/axum_layer.rs::DelegatedLayerBuilder::with_max_body_bytes`
-   - oversized body handling returns HTTP 413 in `DelegatedService::call`
+   - `src/adapters/axum_layer.rs::TrustLayerBuilder::with_max_body_bytes`
+   - oversized body handling returns HTTP 413 in `TrustService::call`
 
 ## Non-goals / out of scope
 

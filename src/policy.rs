@@ -250,8 +250,8 @@ pub fn check_delegation_depth(
 /// To enforce extra constraints, call this inside your custom policy's `evaluate` method:
 ///
 /// ```rust,ignore
-/// use delegated::{DefaultPolicy, Policy, check_extra_constraints};
-/// use delegated::models::{HostContext, PolicyCheck, RequestEnvelope};
+/// use signet::{DefaultPolicy, Policy, check_extra_constraints};
+/// use signet::models::{HostContext, PolicyCheck, RequestEnvelope};
 ///
 /// struct MyPolicy;
 /// impl Policy for MyPolicy {

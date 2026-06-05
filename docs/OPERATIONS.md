@@ -1,6 +1,6 @@
 # Operations Runbook
 
-This runbook targets small teams running `delegated` in production.
+This runbook targets small teams running `signet` in production.
 
 See also: [`KNOWN_LIMITS.md`](KNOWN_LIMITS.md)
 
@@ -29,7 +29,7 @@ Release provenance check is included in `release_check.sh` (`scripts/verify_rele
 For tag-cut/release candidates, run with strict enforcement:
 
 ```bash
-DELEGATED_REQUIRE_VERSION_TAG_ON_HEAD=1 ./scripts/verify_release_provenance.sh
+SIGNET_REQUIRE_VERSION_TAG_ON_HEAD=1 ./scripts/verify_release_provenance.sh
 ```
 
 Run conformance regression:
@@ -41,9 +41,9 @@ Run conformance regression:
 Run external interop checks against third-party adapter deployments:
 
 ```bash
-DELEGATED_INTEROP_HTTP_URL=https://interop.example.com/trust \
-DELEGATED_INTEROP_MCP_URL=https://interop.example.com/mcp \
-DELEGATED_INTEROP_A2A_URL=https://interop.example.com/a2a \
+SIGNET_INTEROP_HTTP_URL=https://interop.example.com/trust \
+SIGNET_INTEROP_MCP_URL=https://interop.example.com/mcp \
+SIGNET_INTEROP_A2A_URL=https://interop.example.com/a2a \
 ./scripts/external_interop.sh
 ```
 
@@ -72,7 +72,7 @@ Monitor:
 
 ### Revocation backend outage
 
-`delegated` is fail-closed. During outage, requests are denied by design.
+`signet` is fail-closed. During outage, requests are denied by design.
 
 1. Restore backend first.
 2. Confirm state queries succeed.

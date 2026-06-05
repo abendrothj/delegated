@@ -1,84 +1,109 @@
-# delegated
+# signet
 
-Fail-closed trust evaluation for agentic AI systems.
+AI agents call APIs, send emails, book meetings, and delegate work to other agents. Most do this with no credential that proves they were authorized to.
 
-`delegated` verifies delegation tokens and enforces policy on every agent action — before your tools, APIs, or downstream agents run anything. Drop it in as Tower middleware, call the standalone adapters, or use the client SDK to attach trust claims to outbound requests.
+`signet` is the trust layer for agent actions. Every request carries a cryptographically signed delegation token proving who authorized it, what it can do, and when that authority expires. Requests without a valid token are rejected before your handler runs.
 
-[![crates.io](https://img.shields.io/crates/v/delegated.svg)](https://crates.io/crates/delegated)
-[![docs.rs](https://img.shields.io/docsrs/delegated)](https://docs.rs/crate/delegated/latest)
+[![crates.io](https://img.shields.io/crates/v/signet.svg)](https://crates.io/crates/signet)
+[![docs.rs](https://img.shields.io/docsrs/signet)](https://docs.rs/crate/signet/latest)
 [![CI](https://github.com/abendrothj/delegated/actions/workflows/ci.yml/badge.svg)](https://github.com/abendrothj/delegated/actions/workflows/ci.yml)
 
-## What it does
+---
 
-- **Verifies** Ed25519-signed delegation tokens and agent identity documents
-- **Enforces** configurable policy: allowed actions, max spend, delegation depth, calendar constraints, email domain allowlists, cognitive and reputation gates
-- **Blocks** revoked tokens, emergency-denied agents, nonce replays — fail-closed on backend errors
-- **Audits** every decision to a structured JSONL sink
-- **Issues** delegation tokens and identity documents via fluent builders with key rotation support
+## How it works
 
-## Security and reliability
+An agent that wants to act on a user's behalf presents a `RequestEnvelope` — a signed bundle containing its identity document and a delegation token. `signet` evaluates that envelope before your code runs.
 
-- Security policy and reporting: [`SECURITY.md`](SECURITY.md)
-- Threat model: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)
-- Production security checklist: [`docs/SECURITY_CHECKLIST.md`](docs/SECURITY_CHECKLIST.md)
-- Known limits and constraints: [`docs/KNOWN_LIMITS.md`](docs/KNOWN_LIMITS.md)
-- CI enforces format/lint/tests/publish dry-run on pushes and PRs
-- Quick local baseline benchmark:
+```mermaid
+sequenceDiagram
+    actor Alice
+    participant Scheduler Agent
+    participant Booking Agent
+    participant Calendar API
 
-```bash
-cargo run --release --example eval_benchmark -- 20000
+    Alice->>Scheduler Agent: book a meeting with Bob
+    Scheduler Agent->>Booking Agent: delegates with signed token
+    Booking Agent->>Calendar API: POST /tools/call + RequestEnvelope
+    Calendar API->>Calendar API: signet evaluates
+    alt valid token, allowed action
+        Calendar API-->>Booking Agent: 200 OK
+    else expired · revoked · wrong action · forged
+        Calendar API-->>Booking Agent: 403 Forbidden
+    end
 ```
 
-## Production starter pack
+Every arrow in the chain is verified. An agent cannot claim permissions it was not granted, reuse a token after it expires, or forge a token it did not sign.
 
-- Standardized spec: [`SPEC.md`](SPEC.md)
-- Operations runbook: [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
-- 30-minute integration path: [`docs/INTEGRATION_GUIDE.md`](docs/INTEGRATION_GUIDE.md)
-- Conformance runner: `./scripts/conformance.sh`
-- External interop runner: `./scripts/external_interop.sh` (requires endpoint env vars)
-- Release gate runner: `./scripts/release_check.sh`
+## What signet guarantees
 
-## Feature flags
+- **Verified identity** — the agent's identity document is Ed25519-signed; forgeries fail immediately
+- **Authorized actions** — the token names exactly which actions are permitted; anything outside that scope is blocked
+- **Time-bounded authority** — tokens expire; replayed tokens are detected and rejected
+- **Revocation** — tokens and agents can be revoked instantly; the store fails closed if it is unavailable
+- **Auditable decisions** — every allow and deny is written to a structured JSONL audit log
+- **Delegation depth** — the chain length is tracked by your infrastructure, never by the agent itself
 
-| Flag | What it enables |
-|---|---|
-| *(none)* | Core evaluation pipeline, adapters, builders, file-backed state |
-| `async` | `AsyncTrustStateStore` trait + async engine variants |
-| `axum` | `DelegatedLayer` Tower middleware for axum |
-| `client` | `DelegatedClient` for sending trust-validated outbound requests |
-| `redis` | `RedisTrustStateStore` backed by Redis (async) |
-| `tracing` | `tracing` spans on the evaluation hot path |
-| `metrics` | `metrics` counters and histograms |
-| `oidc-bridge` | `IdentityVerifier` trait for OIDC-based identity verification |
+## The wire format
 
-## Quickstart — server side (axum middleware)
+An agent request is a JSON object. Here is the shape of a `RequestEnvelope` (fields trimmed for clarity):
+
+```json
+{
+  "spec_version": "0.1",
+  "kind": "TrustRequestEnvelope",
+  "agent_id": "agent:example:scheduler:v1",
+  "delegator_id": "user:alice",
+  "audience": "tool:google-calendar",
+  "action": "calendar.create_event",
+  "delegation_token": {
+    "token_id": "dlg_01J0EXAMPLE",
+    "allowed_actions": ["calendar.create_event"],
+    "expires_at": "2026-06-01T21:00:00Z",
+    "nonce": "...",
+    "key_id": "key-2026-01",
+    "signature_alg": "Ed25519",
+    "signature": "..."
+  },
+  "identity_document": {
+    "agent_id": "agent:example:scheduler:v1",
+    "public_keys": [{ "kid": "key-2026-01", "kty": "OKP", "crv": "Ed25519", "x": "..." }],
+    "expires_at": "2026-06-08T20:00:00Z",
+    "signature": "..."
+  }
+}
+```
+
+The full schema is defined in [`SPEC.md`](SPEC.md). Signatures use canonical JSON with deterministic key ordering, making the format straightforward to implement in any language.
+
+---
+
+## Quickstart — protecting a server
+
+Drop `signet` in as Tower middleware. Every POST to your route is evaluated before your handler runs.
 
 ```rust
 use std::sync::Arc;
-use delegated::{
-    DelegatedLayerBuilder, InMemoryAsyncTrustState, JsonlFileAuditSink,
-};
+use signet::{TrustLayerBuilder, InMemoryAsyncTrustState, JsonlFileAuditSink};
 
 let trust_state = Arc::new(InMemoryAsyncTrustState::new());
 let sink = Arc::new(JsonlFileAuditSink::new("audit.jsonl"));
-let layer = DelegatedLayerBuilder::new(trust_state, sink)
-    .with_max_body_bytes(1024 * 1024) // optional, default is 1 MiB
-    .build();
 
 let app = axum::Router::new()
     .route("/tools/call", axum::routing::post(my_handler))
-    .layer(layer);
+    .layer(
+        TrustLayerBuilder::new(trust_state, sink).build()
+    );
 ```
 
-Every POST to `/tools/call` is evaluated before `my_handler` runs. Denied requests return 403 with `{allowed, stage, reason}` JSON; allowed requests pass through. Oversized request bodies return 413.
+Denied requests return `403` with `{"allowed": false, "stage": "...", "reason": "..."}`. Oversized bodies return `413`. Your handler only runs when everything checks out.
 
-## Quickstart — client side
+## Quickstart — issuing a token
 
-Build a `RequestEnvelope` with the issuance builders and attach it to outbound requests:
+Build a `RequestEnvelope` with the issuance builders and attach it to outbound requests.
 
 ```rust
-use delegated::{
-    DelegatedClient,
+use signet::{
+    TrustClient,
     issuance::{AgentIdentityDocumentBuilder, DelegationTokenBuilder, RequestEnvelopeBuilder},
 };
 use ed25519_dalek::SigningKey;
@@ -117,84 +142,93 @@ let envelope = RequestEnvelopeBuilder::new()
     .action("calendar.create_event")
     .build()?;
 
-let client = DelegatedClient::new();
+let client = TrustClient::new();
 let resp = client.evaluate_http("https://api.example.com/trust", &envelope).await?;
 if resp.is_allowed() {
     // proceed
 }
 ```
 
-## Standalone adapters (without axum)
+## Standalone adapters
 
-Call the adapters directly in any async or sync context:
+Call the protocol adapters directly when you are not using axum:
 
 ```rust
-// HTTP (sync)
-use delegated::{handle_http_json_request, JsonlFileAuditSink};
+use signet::{handle_http_json_request, handle_mcp_jsonrpc_request, handle_a2a_request};
+use signet::JsonlFileAuditSink;
 use chrono::Utc;
 
 let sink = JsonlFileAuditSink::new("audit.jsonl");
-let response = handle_http_json_request(&raw_body, Utc::now(), &sink);
-// response.status_code, response.body["allowed"]
 
-// MCP
-use delegated::handle_mcp_jsonrpc_request;
+// HTTP
+let response = handle_http_json_request(&raw_body, Utc::now(), &sink);
+
+// MCP JSON-RPC
 let response = handle_mcp_jsonrpc_request(&raw_body, Utc::now(), &sink);
 
 // A2A
-use delegated::handle_a2a_request;
 let response = handle_a2a_request(&raw_body, Utc::now(), &sink);
 ```
 
+---
+
+## Trust pipeline
+
+Every evaluation runs these stages in order. The first failure stops the chain and returns a denial.
+
+1. `normalize_request` — parse and contract-validate the envelope
+2. `validate_profile_compatibility` — SPIFFE / OIDC / Developer profile checks
+3. `verify_signatures` — Ed25519 on identity document and delegation token
+4. `validate_identity_document_lifetime` — expiry with configurable clock leeway
+5. `enforce_revocation_and_redelegation` — revocation, emergency deny, nonce replay, delegation depth
+6. `validate_token_lifetime` — token `issued_at` / `expires_at` window
+7. `validate_token_binding` — `agent_id`, `delegator_id`, audience cross-check
+8. `evaluate_policy` — allowed actions, spend limits, calendar and email constraints, cognitive and reputation gates
+
 ## Host context vs request runtime context
 
-`runtime_context` in `RequestEnvelope` is caller-provided data used for request-specific checks (spend amount, target email/calendar, etc).
+Security-sensitive trust signals — delegation depth, cognitive scores, reputation, extra approvals, clock leeway — are supplied by your infrastructure via `HostContext` and are **never read from the inbound request**. An agent cannot self-elevate by putting `"delegation_depth": 0` in its JSON.
 
-Security-sensitive trust signals (delegation depth, cognitive/reputation/risk assessments, extra approvals, clock leeway) are supplied by your infrastructure via `HostContext`/`HostContextProvider` and are never trusted from inbound request JSON.
+`runtime_context` (requested spend amount, target email address, target calendar ID) is caller-provided and used only for non-security policy checks.
 
 ## Trust state
 
-**Sync** (suitable for single-process / CLI use):
+**Sync** (CLI / single-process):
 
 ```rust
-use delegated::{InMemoryTrustState, FileBackedTrustState, TrustStateAdmin};
+use signet::{InMemoryTrustState, FileBackedTrustState, TrustStateAdmin};
 use std::sync::Arc;
 
-// In-memory with interior mutability — share as Arc<InMemoryTrustState>
 let state = Arc::new(InMemoryTrustState::new());
 state.revoke_token("dlg_abc")?;
 state.emergency_deny_agent("agent:bad")?;
 state.revoke_tokens(&["dlg_1", "dlg_2", "dlg_3"])?;
-state.clear_emergency_deny_list()?;
 state.flush_expired_nonces(chrono::Utc::now())?;
 
-// File-backed (advisory lock, CLI / single-process only)
-let state = FileBackedTrustState::new(delegated::default_trust_state_path());
+// File-backed (advisory lock, single-process only)
+let state = FileBackedTrustState::new(signet::default_trust_state_path());
 ```
 
-For convenience entry points that do not accept explicit state (`evaluate_request`, `evaluate_and_audit`, and default adapter wrappers), in-memory runtime state is now process-shared so nonce replay protection persists across calls in the same process.
-
-**Async** (Redis for production):
+**Async** (production — Redis):
 
 ```rust
 #[cfg(feature = "redis")]
-use delegated::RedisTrustStateStore;
+use signet::RedisTrustStateStore;
 let state = Arc::new(RedisTrustStateStore::connect("redis://127.0.0.1").await?);
-// revoke_tokens uses a Redis pipeline; clear_emergency_deny_list uses SCAN+DEL
 ```
 
-To enforce this in production, set `DELEGATED_REQUIRE_SHARED_BACKEND=1` (or `DELEGATED_ENV=production`).
-When enabled, sync convenience runtime paths fail closed, and `DelegatedLayerBuilder` requires a shared async backend.
+Set `SIGNET_REQUIRE_SHARED_BACKEND=1` (or `SIGNET_ENV=production`) to enforce that production deployments use a shared backend. With this set, the sync convenience paths fail closed and `TrustLayerBuilder::build()` panics on a non-shared store. Use `TrustLayerBuilder::try_build()` for graceful error handling in async initializers.
 
 ## Revocation and control plane
 
 ```rust
-use delegated::{
-    revoke_token_with_receipt, emergency_deny_agent, simulate_policy_with_host_context,
-    HostContext, InMemoryTrustState
+use signet::{
+    revoke_token_with_receipt, emergency_deny_agent,
+    HostContext, InMemoryTrustState,
 };
 
 let state = InMemoryTrustState::new();
+
 // Revoke with an auditable receipt
 let op = revoke_token_with_receipt(
     &state, "req_123", "dlg_abc".to_string(), "user:operator",
@@ -203,32 +237,18 @@ let op = revoke_token_with_receipt(
 println!("receipt: {}", op.receipt.request_id);
 ```
 
-`simulate_policy` runs **policy checks only** (no signature, lifetime, revocation, or binding stages).  
-Use `simulate_policy_with_host_context` when you need simulation results that reflect trusted deployment signals (for example delegation depth).
-
-## Trust pipeline
-
-Every evaluation runs these stages in order, fail-closing at the first failure:
-
-1. `normalize_request` — parse and contract-validate the request envelope
-2. `validate_profile_compatibility` — SPIFFE / OIDC / Developer profile checks
-3. `verify_signatures` — Ed25519 on identity document and delegation token
-4. `validate_identity_document_lifetime` — expiry with configurable clock leeway
-5. `enforce_revocation_and_redelegation` — revocation, emergency deny, nonce replay, delegation depth
-6. `validate_token_lifetime` — token `issued_at` / `expires_at` window
-7. `validate_token_binding` — `agent_id`, `delegator_id`, audience cross-check
-8. `evaluate_policy` — allowed actions, max spend, calendar constraints, cognitive/reputation gates
+`simulate_policy` runs policy checks only — no signature, lifetime, revocation, or binding verification. Use it for configuration testing and policy preview. **Never use it as a production security gate.**
 
 ## Custom policy
 
 ```rust
-use delegated::{Policy, PolicyCheck, RequestEnvelope, HostContext};
+use signet::{Policy, PolicyCheck, RequestEnvelope, HostContext};
 
 struct MyPolicy;
 impl Policy for MyPolicy {
     fn evaluate(&self, envelope: &RequestEnvelope, ctx: &HostContext) -> Vec<PolicyCheck> {
         vec![PolicyCheck {
-            name: "my_check".to_string(),
+            name: "namespace_check".to_string(),
             passed: envelope.agent_id.starts_with("agent:trusted:"),
             reason: "agent not in trusted namespace".to_string(),
         }]
@@ -238,26 +258,74 @@ impl Policy for MyPolicy {
 // Pass to evaluate_request_with_policy / evaluate_and_audit_with_policy
 ```
 
+Note: `resource_constraints.extra` in a token is **not evaluated by `DefaultPolicy`**. To enforce custom extra constraints, call `check_extra_constraints` inside your own `Policy` implementation — see its documentation for an example.
+
+---
+
+## Cross-language and interoperability
+
+The wire format is defined in [`SPEC.md`](SPEC.md): JSON objects with canonical key ordering (keys sorted lexicographically before signing), Ed25519 signatures encoded as base64url-no-pad, and a fixed eight-stage evaluation pipeline. Any language can implement a compatible token issuer or evaluator against that spec.
+
+Protocol adapters included: [HTTP](src/adapters/http.rs) · [MCP JSON-RPC](src/adapters/mcp.rs) · [A2A](src/adapters/a2a.rs) · [axum Tower middleware](src/adapters/axum_layer.rs)
+
+If you are implementing `signet` in another language, open an issue — reference test vectors are on the roadmap and we want to know what you need.
+
 ## CLI
 
 ```bash
-cargo run --bin delegated-cli -- help
-
 # Sign an identity document
-delegated-cli sign-identity identity.json <base64url-private-key>
+signet sign-identity identity.json <base64url-private-key>
 
 # Sign a delegation token
-delegated-cli sign-token token.json <base64url-private-key>
+signet sign-token token.json <base64url-private-key>
 
-# Verify a request envelope offline (uses durable CLI trust state path)
-delegated-cli verify-request request.json
+# Verify a request envelope offline
+signet verify-request request.json
 
 # Interactive grant approval
-delegated-cli approve-grant-interactive proposal.json user:operator
+signet approve-grant-interactive proposal.json user:operator
 
-# Revoke a token (persists to ~/.delegated/trust-state.json)
-delegated-cli revoke-token req_123 dlg_abc user:operator --reason "manual revoke"
+# Revoke a token (persists to ~/.signet/trust-state.json)
+signet revoke-token req_123 dlg_abc user:operator --reason "manual revoke"
 ```
+
+---
+
+## Feature flags
+
+| Flag | What it enables |
+|---|---|
+| *(none)* | Core evaluation pipeline, adapters, builders, file-backed state |
+| `async` | `AsyncTrustStateStore` trait + async engine variants |
+| `axum` | `TrustLayer` Tower middleware for axum |
+| `client` | `TrustClient` for sending trust-validated outbound requests |
+| `redis` | `RedisTrustStateStore` backed by Redis (async) |
+| `tracing` | `tracing` spans on the evaluation hot path |
+| `metrics` | `metrics` counters (`signet_requests_total`) and histograms |
+| `oidc-bridge` | `IdentityVerifier` trait for OIDC-based identity verification |
+
+## Security and reliability
+
+- Security policy and reporting: [`SECURITY.md`](SECURITY.md)
+- Threat model: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)
+- Production security checklist: [`docs/SECURITY_CHECKLIST.md`](docs/SECURITY_CHECKLIST.md)
+- Known limits: [`docs/KNOWN_LIMITS.md`](docs/KNOWN_LIMITS.md)
+- CI enforces format / lint / tests / publish dry-run on every push and PR
+
+Quick local baseline benchmark:
+
+```bash
+cargo run --release --example eval_benchmark -- 20000
+```
+
+## Production
+
+- Spec: [`SPEC.md`](SPEC.md)
+- Operations runbook: [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
+- 30-minute integration path: [`docs/INTEGRATION_GUIDE.md`](docs/INTEGRATION_GUIDE.md)
+- Conformance runner: `./scripts/conformance.sh`
+- External interop runner: `./scripts/external_interop.sh` (requires `SIGNET_INTEROP_HTTP_URL`)
+- Release gate: `./scripts/release_check.sh`
 
 ## Repository layout
 
@@ -276,7 +344,7 @@ src/
     a2a.rs             — A2A adapter
     axum_layer.rs      — Tower Layer middleware (feature: axum)
     guard.rs           — rate limit + concurrency guard
-  client.rs            — DelegatedClient (feature: client)
+  client.rs            — TrustClient (feature: client)
   audit.rs             — AuditSink trait + JsonlFileAuditSink
   discovery.rs         — DiscoveryService + JWKS handlers
   control_plane.rs     — revocation receipts + operational reports
@@ -285,7 +353,7 @@ tests/
   conformance.rs       — end-to-end allow/deny/replay/revocation
   interop_harness.rs   — cross-adapter and cross-profile parity
   reference_cli.rs     — CLI signing/verification/approval workflows
-  integration_server.rs — real axum server + DelegatedClient round-trips
+  integration_server.rs — real axum server + TrustClient round-trips
 ```
 
 ## Testing

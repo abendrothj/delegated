@@ -89,8 +89,8 @@ pub fn evaluate_request_with_policy(
             );
             #[cfg(feature = "metrics")]
             {
-                metrics::counter!("delegated_requests_total", "allowed" => "true").increment(1);
-                metrics::histogram!("delegated_evaluation_duration_seconds")
+                metrics::counter!("signet_requests_total", "allowed" => "true").increment(1);
+                metrics::histogram!("signet_evaluation_duration_seconds")
                     .record(_eval_start.elapsed().as_secs_f64());
             }
             let event = from_envelope(envelope, &decision, now);
@@ -107,12 +107,12 @@ pub fn evaluate_request_with_policy(
             #[cfg(feature = "metrics")]
             {
                 metrics::counter!(
-                    "delegated_requests_total",
+                    "signet_requests_total",
                     "allowed" => "false",
                     "stage" => violation.stage
                 )
                 .increment(1);
-                metrics::histogram!("delegated_evaluation_duration_seconds")
+                metrics::histogram!("signet_evaluation_duration_seconds")
                     .record(_eval_start.elapsed().as_secs_f64());
             }
             let decision = Decision::deny(violation.stage, violation.reason.clone());
@@ -172,7 +172,7 @@ pub fn evaluate_request_with_verifier(
 ///
 /// It is intended for policy preview, configuration testing, and local development.
 /// **Never use it as a production security gate.** For enforcement, use
-/// [`evaluate_request_with_state`] or the axum [`DelegatedLayer`].
+/// [`evaluate_request_with_state`] or the axum [`TrustLayer`].
 pub fn simulate_request_policy(
     raw_request: &Value,
     host_context: &HostContext,
@@ -749,7 +749,7 @@ mod tests {
         assert!(decision.allowed);
 
         let path = std::env::temp_dir().join(format!(
-            "delegated_audit_{}.jsonl",
+            "signet_audit_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")

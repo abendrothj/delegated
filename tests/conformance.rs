@@ -1,16 +1,16 @@
 use base64ct::{Base64UrlUnpadded, Encoding};
 use chrono::{TimeZone, Utc};
-use delegated::models::{
+use ed25519_dalek::SigningKey;
+use serde_json::{Value, json};
+use signet::models::{
     AgentEndpoint, AgentIdentityDocument, DelegationToken, PublicKeyRecord, RuntimeContext,
     TrustProfile,
 };
-use delegated::{
+use signet::{
     InMemoryTrustState, JsonlFileAuditSink, RequestEnvelope, TOKEN_SIGNATURE_ALG_ED25519,
     TrustStateAdmin, handle_http_json_request_with_state, sign_delegation_token,
     sign_identity_document,
 };
-use ed25519_dalek::SigningKey;
-use serde_json::{Value, json};
 
 fn signing_key() -> SigningKey {
     SigningKey::from_bytes(&[42u8; 32])
@@ -115,7 +115,7 @@ fn now() -> chrono::DateTime<Utc> {
 #[test]
 fn allows_signed_request_end_to_end() {
     let path = std::env::temp_dir().join(format!(
-        "delegated_conformance_allow_{}.jsonl",
+        "signet_conformance_allow_{}.jsonl",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time should be after epoch")
@@ -130,7 +130,7 @@ fn allows_signed_request_end_to_end() {
         now(),
         &sink,
         &state,
-        &delegated::HostContext::default(),
+        &signet::HostContext::default(),
     );
     assert_eq!(response.status_code, 200);
     assert_eq!(response.body["allowed"], json!(true));
@@ -141,7 +141,7 @@ fn allows_signed_request_end_to_end() {
 #[test]
 fn denies_tampered_signature_end_to_end() {
     let path = std::env::temp_dir().join(format!(
-        "delegated_conformance_tamper_{}.jsonl",
+        "signet_conformance_tamper_{}.jsonl",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time should be after epoch")
@@ -157,7 +157,7 @@ fn denies_tampered_signature_end_to_end() {
         now(),
         &sink,
         &state,
-        &delegated::HostContext::default(),
+        &signet::HostContext::default(),
     );
     assert_eq!(response.status_code, 403);
     assert_eq!(response.body["stage"], json!("verify_signatures"));
@@ -168,7 +168,7 @@ fn denies_tampered_signature_end_to_end() {
 #[test]
 fn denies_revoked_token_end_to_end() {
     let path = std::env::temp_dir().join(format!(
-        "delegated_conformance_revoke_{}.jsonl",
+        "signet_conformance_revoke_{}.jsonl",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time should be after epoch")
@@ -187,7 +187,7 @@ fn denies_revoked_token_end_to_end() {
         now(),
         &sink,
         &state,
-        &delegated::HostContext::default(),
+        &signet::HostContext::default(),
     );
     assert_eq!(response.status_code, 403);
     assert_eq!(
@@ -201,7 +201,7 @@ fn denies_revoked_token_end_to_end() {
 #[test]
 fn denies_nonce_replay_end_to_end() {
     let path = std::env::temp_dir().join(format!(
-        "delegated_conformance_replay_{}.jsonl",
+        "signet_conformance_replay_{}.jsonl",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time should be after epoch")
@@ -216,14 +216,14 @@ fn denies_nonce_replay_end_to_end() {
         now(),
         &sink,
         &state,
-        &delegated::HostContext::default(),
+        &signet::HostContext::default(),
     );
     let second = handle_http_json_request_with_state(
         &body,
         now(),
         &sink,
         &state,
-        &delegated::HostContext::default(),
+        &signet::HostContext::default(),
     );
 
     assert_eq!(first.status_code, 200);
@@ -239,7 +239,7 @@ fn denies_nonce_replay_end_to_end() {
 #[test]
 fn writes_allow_and_deny_audit_events_end_to_end() {
     let path = std::env::temp_dir().join(format!(
-        "delegated_conformance_audit_{}.jsonl",
+        "signet_conformance_audit_{}.jsonl",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time should be after epoch")
@@ -257,14 +257,14 @@ fn writes_allow_and_deny_audit_events_end_to_end() {
         now(),
         &sink,
         &state,
-        &delegated::HostContext::default(),
+        &signet::HostContext::default(),
     );
     let deny = handle_http_json_request_with_state(
         &deny_body_value.to_string(),
         now(),
         &sink,
         &state,
-        &delegated::HostContext::default(),
+        &signet::HostContext::default(),
     );
 
     assert_eq!(allow.status_code, 200);

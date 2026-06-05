@@ -107,7 +107,7 @@ impl A2aTrustResponse {
 }
 
 /// HTTP client for sending trust-validated requests to services that run the
-/// `delegated` server-side adapters.
+/// `signet` server-side adapters.
 ///
 /// Build a [`RequestEnvelope`] using the issuance builders, then use this
 /// client to send it to the remote service. The client handles serialization,
@@ -115,8 +115,8 @@ impl A2aTrustResponse {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use delegated::client::DelegatedClient;
-/// # use delegated::issuance::{AgentIdentityDocumentBuilder, DelegationTokenBuilder, RequestEnvelopeBuilder};
+/// # use signet::client::TrustClient;
+/// # use signet::issuance::{AgentIdentityDocumentBuilder, DelegationTokenBuilder, RequestEnvelopeBuilder};
 /// # use ed25519_dalek::SigningKey;
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// # let key = SigningKey::from_bytes(&[1u8; 32]);
@@ -140,7 +140,7 @@ impl A2aTrustResponse {
 ///     .action("calendar.create_event")
 ///     .build()?;
 ///
-/// let client = DelegatedClient::new();
+/// let client = TrustClient::new();
 /// let response = client.evaluate_http("https://api.example.com/trust", &envelope).await?;
 /// if response.is_allowed() {
 ///     println!("request authorized at stage {}", response.stage);
@@ -148,17 +148,17 @@ impl A2aTrustResponse {
 /// # Ok(())
 /// # }
 /// ```
-pub struct DelegatedClient {
+pub struct TrustClient {
     inner: reqwest::Client,
 }
 
-impl Default for DelegatedClient {
+impl Default for TrustClient {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl DelegatedClient {
+impl TrustClient {
     pub fn new() -> Self {
         Self {
             inner: reqwest::Client::new(),
@@ -171,7 +171,7 @@ impl DelegatedClient {
         Self { inner: client }
     }
 
-    /// Send a trust request to a service running the delegated HTTP adapter.
+    /// Send a trust request to a service running the signet HTTP adapter.
     ///
     /// Posts the `RequestEnvelope` as JSON and parses the `allowed/stage/reason`
     /// response body.
@@ -200,7 +200,7 @@ impl DelegatedClient {
         })
     }
 
-    /// Send a trust request to a service running the delegated MCP adapter.
+    /// Send a trust request to a service running the signet MCP adapter.
     ///
     /// Wraps the envelope as `params._trust` in a JSON-RPC 2.0 request. Any
     /// additional parameters you want to pass to the remote method go in
@@ -261,7 +261,7 @@ impl DelegatedClient {
         })
     }
 
-    /// Send a trust request to a service running the delegated A2A adapter.
+    /// Send a trust request to a service running the signet A2A adapter.
     ///
     /// Wraps the envelope as `trust_claims` in an `A2aProtocolRequest`.
     pub async fn evaluate_a2a(

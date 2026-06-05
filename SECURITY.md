@@ -1,6 +1,6 @@
 # Security Policy
 
-`delegated` is a fail-closed trust layer. Security issues are treated as highest priority.
+`signet` is a fail-closed trust layer. Security issues are treated as highest priority.
 
 ## Reporting a vulnerability
 
@@ -12,14 +12,14 @@ Please report vulnerabilities privately by opening a GitHub security advisory fo
 
 ## Scope and threat model
 
-`delegated` defends request-time delegation trust boundaries:
+`signet` defends request-time delegation trust boundaries:
 
 - signature verification for identity documents and delegation tokens
 - replay protection via nonce consumption
 - revocation and emergency deny checks
 - strict allow/deny policy evaluation with audit logging
 
-`delegated` does **not** replace infrastructure hardening. Deployments still need:
+`signet` does **not** replace infrastructure hardening. Deployments still need:
 
 - secure key management and rotation
 - secure transport (TLS/mTLS as appropriate)
@@ -30,6 +30,6 @@ Please report vulnerabilities privately by opening a GitHub security advisory fo
 
 1. Use shared state (`RedisTrustStateStore`) for distributed deployments.
 2. Keep identity/token lifetimes short and rotate signing keys.
-3. Enforce body-size limits in middleware (`DelegatedLayerBuilder::with_max_body_bytes`).
+3. Enforce body-size limits in middleware (`TrustLayerBuilder::with_max_body_bytes`).
 4. Treat `runtime_context` as untrusted request input; source trust signals from `HostContext`.
 

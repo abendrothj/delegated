@@ -43,8 +43,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Added release provenance verification (`scripts/verify_release_provenance.sh`) and wired it into CI/release checks to catch tag/version drift.
 - Added external interoperability harness (`tests/external_interop.rs`) and runner script (`scripts/external_interop.sh`) for validating third-party HTTP/MCP/A2A adapters.
 - Added production shared-backend enforcement controls:
-  - `DELEGATED_REQUIRE_SHARED_BACKEND=1` (or `DELEGATED_ENV=production`) now fails closed for non-shared sync convenience runtime paths.
-  - `DelegatedLayerBuilder` now rejects non-shared async stores when shared-backend enforcement is enabled.
+  - `SIGNET_REQUIRE_SHARED_BACKEND=1` (or `SIGNET_ENV=production`) now fails closed for non-shared sync convenience runtime paths.
+  - `TrustLayerBuilder` now rejects non-shared async stores when shared-backend enforcement is enabled.
 
 ### Production starter pack
 
@@ -57,7 +57,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Metadata
 
-- Added explicit crate documentation metadata (`documentation = "https://docs.rs/crate/delegated/latest"`) so crates.io resolves docs consistently.
+Added explicit crate documentation metadata (`documentation = "https://docs.rs/crate/signet/latest"`) so crates.io resolves docs consistently.
 
 ## [0.1.0] — 2026-06-04
 
@@ -75,7 +75,7 @@ Initial public release.
 - **HTTP adapter** (`handle_http_json_request*`) — returns `{allowed, stage, reason}` JSON with 200/403/400/429/500 status codes.
 - **MCP adapter** (`handle_mcp_jsonrpc_request*`) — validates `params._trust` in JSON-RPC 2.0 requests; returns JSON-RPC errors on deny.
 - **A2A adapter** (`handle_a2a_request*`) — validates `trust_claims` in `A2aProtocolRequest` messages.
-- **Axum middleware layer** (`DelegatedLayer`, `DelegatedLayerBuilder`) — Tower `Layer`/`Service` that reads the request body, runs the async trust pipeline, and either passes the request through or returns 403. Feature flag: `axum`.
+- **Axum middleware layer** (`TrustLayer`, `TrustLayerBuilder`) — Tower `Layer`/`Service` that reads the request body, runs the async trust pipeline, and either passes the request through or returns 403. Feature flag: `axum`.
 
 ### Issuance builders
 
@@ -112,16 +112,16 @@ Initial public release.
 
 ### Discovery
 
-- `DiscoveryService` with `handle_discovery_http_request` for `/.well-known/delegated-issuer` and JWKS endpoints.
+- **`DiscoveryService`** with `handle_discovery_http_request` for `/.well-known/signet-issuer` and JWKS endpoints.
 
 ### Client SDK
 
-- `DelegatedClient` with `evaluate_http`, `evaluate_mcp`, and `evaluate_a2a` methods for sending trust-validated requests to services running the server-side adapters. Feature flag: `client`.
+- `TrustClient` with `evaluate_http`, `evaluate_mcp`, and `evaluate_a2a` methods for sending trust-validated requests to services running the server-side adapters. Feature flag: `client`.
 
 ### Observability
 
 - `tracing` instrumentation on the evaluation hot path. Feature flag: `tracing`.
-- `metrics` counters (`delegated_requests_total`) and histograms (`delegated_evaluation_duration_seconds`). Feature flag: `metrics`.
+- `metrics` counters (`signet_requests_total`) and histograms (`signet_evaluation_duration_seconds`). Feature flag: `metrics`.
 
 ### OIDC bridge
 

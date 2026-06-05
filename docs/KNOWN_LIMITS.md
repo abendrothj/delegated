@@ -59,7 +59,7 @@ It is a production-facing artifact: read this before deploying at scale.
    - Cross-instance persistence still requires a shared backend (for example Redis or a durable file path for single-instance deployments).
 
 7. **Production shared-backend enforcement is opt-in**
-   - Set `DELEGATED_REQUIRE_SHARED_BACKEND=1` (or `DELEGATED_ENV=production`) to fail closed on non-shared runtime paths.
+   - Set `SIGNET_REQUIRE_SHARED_BACKEND=1` (or `SIGNET_ENV=production`) to fail closed on non-shared runtime paths.
    - Without this flag, convenience APIs remain available for local/dev usage.
 
 ## Performance limits

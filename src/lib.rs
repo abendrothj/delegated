@@ -123,13 +123,13 @@ pub use revocation_async::{AsyncTrustStateAdmin, AsyncTrustStateStore, InMemoryA
 
 #[cfg(feature = "axum")]
 pub use adapters::axum_layer::{
-    AsyncHostContextProvider, DelegatedLayer, DelegatedLayerBuilder, StaticAsyncHostContextProvider,
+    AsyncHostContextProvider, StaticAsyncHostContextProvider, TrustLayer, TrustLayerBuilder,
 };
 
 #[cfg(feature = "client")]
 pub use client::{
-    A2aTrustResponse, ClientError, ClientErrorKind, DelegatedClient, HttpTrustResponse,
-    McpTrustResponse,
+    A2aTrustResponse, ClientError, ClientErrorKind, HttpTrustResponse, McpTrustResponse,
+    TrustClient,
 };
 
 #[cfg(feature = "redis")]

@@ -1,10 +1,10 @@
 use chrono::Utc;
-use delegated::issuance::{
-    AgentIdentityDocumentBuilder, DelegationTokenBuilder, RequestEnvelopeBuilder,
-};
-use delegated::{evaluate_request, models::TrustProfile};
 use ed25519_dalek::SigningKey;
 use serde_json::to_value;
+use signet::issuance::{
+    AgentIdentityDocumentBuilder, DelegationTokenBuilder, RequestEnvelopeBuilder,
+};
+use signet::{evaluate_request, models::TrustProfile};
 
 fn signed_request_with_nonce(nonce: &str) -> serde_json::Value {
     let key = SigningKey::from_bytes(&[13u8; 32]);

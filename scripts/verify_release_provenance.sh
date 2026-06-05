@@ -20,7 +20,7 @@ if git tag --points-at HEAD | grep -q '^v'; then
   fi
 fi
 
-if [[ "${DELEGATED_REQUIRE_VERSION_TAG_ON_HEAD:-0}" == "1" ]]; then
+if [[ "${SIGNET_REQUIRE_VERSION_TAG_ON_HEAD:-0}" == "1" ]]; then
   tag_commit="$(git rev-list -n 1 "${expected_tag}" 2>/dev/null || true)"
   if [[ -z "${tag_commit}" ]]; then
     echo "required tag ${expected_tag} does not exist" >&2

@@ -71,8 +71,8 @@ pub async fn evaluate_request_with_async_state_and_policy(
             );
             #[cfg(feature = "metrics")]
             {
-                metrics::counter!("delegated_requests_total", "allowed" => "true").increment(1);
-                metrics::histogram!("delegated_evaluation_duration_seconds")
+                metrics::counter!("signet_requests_total", "allowed" => "true").increment(1);
+                metrics::histogram!("signet_evaluation_duration_seconds")
                     .record(_eval_start.elapsed().as_secs_f64());
             }
             let decision = Decision::allow("evaluate_policy", "request authorized");
@@ -90,12 +90,12 @@ pub async fn evaluate_request_with_async_state_and_policy(
             #[cfg(feature = "metrics")]
             {
                 metrics::counter!(
-                    "delegated_requests_total",
+                    "signet_requests_total",
                     "allowed" => "false",
                     "stage" => violation.stage
                 )
                 .increment(1);
-                metrics::histogram!("delegated_evaluation_duration_seconds")
+                metrics::histogram!("signet_evaluation_duration_seconds")
                     .record(_eval_start.elapsed().as_secs_f64());
             }
             let decision = Decision::deny(violation.stage, violation.reason.clone());
@@ -335,7 +335,7 @@ mod tests {
     async fn async_writes_audit_events() {
         let state = InMemoryAsyncTrustState::new();
         let path = std::env::temp_dir().join(format!(
-            "delegated_async_audit_{}.jsonl",
+            "signet_async_audit_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")

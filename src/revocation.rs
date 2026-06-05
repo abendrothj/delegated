@@ -141,20 +141,18 @@ fn is_production_env(value: Option<std::ffi::OsString>) -> bool {
 }
 
 pub fn require_shared_backend_in_production() -> bool {
-    is_truthy_env(std::env::var_os("DELEGATED_REQUIRE_SHARED_BACKEND"))
-        || is_production_env(std::env::var_os("DELEGATED_ENV"))
+    is_truthy_env(std::env::var_os("SIGNET_REQUIRE_SHARED_BACKEND"))
+        || is_production_env(std::env::var_os("SIGNET_ENV"))
 }
 
 pub fn default_trust_state_path() -> PathBuf {
-    if let Some(override_path) = std::env::var_os("DELEGATED_TRUST_STATE_PATH") {
+    if let Some(override_path) = std::env::var_os("SIGNET_TRUST_STATE_PATH") {
         return PathBuf::from(override_path);
     }
     if let Some(home) = std::env::var_os("HOME") {
-        return PathBuf::from(home)
-            .join(".delegated")
-            .join("trust-state.json");
+        return PathBuf::from(home).join(".signet").join("trust-state.json");
     }
-    PathBuf::from(".delegated").join("trust-state.json")
+    PathBuf::from(".signet").join("trust-state.json")
 }
 
 #[cfg(test)]

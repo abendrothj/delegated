@@ -1,13 +1,13 @@
 #![cfg(feature = "client")]
 
-use delegated::issuance::{
-    AgentIdentityDocumentBuilder, DelegationTokenBuilder, RequestEnvelopeBuilder,
-};
-use delegated::{DelegatedClient, models::TrustProfile};
 use ed25519_dalek::SigningKey;
 use serde_json::json;
+use signet::issuance::{
+    AgentIdentityDocumentBuilder, DelegationTokenBuilder, RequestEnvelopeBuilder,
+};
+use signet::{TrustClient, models::TrustProfile};
 
-fn build_envelope() -> delegated::models::RequestEnvelope {
+fn build_envelope() -> signet::models::RequestEnvelope {
     let key = SigningKey::from_bytes(&[29u8; 32]);
     let doc = AgentIdentityDocumentBuilder::new()
         .agent_id("agent:example:external-interop:v1")
@@ -46,13 +46,13 @@ fn build_envelope() -> delegated::models::RequestEnvelope {
 
 #[tokio::test]
 async fn validates_external_adapter_endpoints_when_configured() {
-    let http_url = match std::env::var("DELEGATED_INTEROP_HTTP_URL") {
+    let http_url = match std::env::var("SIGNET_INTEROP_HTTP_URL") {
         Ok(url) => url,
         Err(_) => return,
     };
 
     let envelope = build_envelope();
-    let client = DelegatedClient::new();
+    let client = TrustClient::new();
 
     let http = client
         .evaluate_http(&http_url, &envelope)
@@ -64,7 +64,7 @@ async fn validates_external_adapter_endpoints_when_configured() {
         http.reason
     );
 
-    if let Ok(mcp_url) = std::env::var("DELEGATED_INTEROP_MCP_URL") {
+    if let Ok(mcp_url) = std::env::var("SIGNET_INTEROP_MCP_URL") {
         let mcp = client
             .evaluate_mcp(
                 &mcp_url,
@@ -82,7 +82,7 @@ async fn validates_external_adapter_endpoints_when_configured() {
         );
     }
 
-    if let Ok(a2a_url) = std::env::var("DELEGATED_INTEROP_A2A_URL") {
+    if let Ok(a2a_url) = std::env::var("SIGNET_INTEROP_A2A_URL") {
         let a2a = client
             .evaluate_a2a(
                 &a2a_url,

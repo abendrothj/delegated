@@ -1,8 +1,8 @@
 use chrono::Duration;
-use delegated::issuance::{
+use ed25519_dalek::SigningKey;
+use signet::issuance::{
     AgentIdentityDocumentBuilder, DelegationTokenBuilder, RequestEnvelopeBuilder,
 };
-use ed25519_dalek::SigningKey;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let key = SigningKey::from_bytes(&[42u8; 32]);

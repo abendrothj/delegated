@@ -42,15 +42,15 @@ impl AsyncHostContextProvider for StaticAsyncHostContextProvider {
     }
 }
 
-/// Builder for [`DelegatedLayer`].
-pub struct DelegatedLayerBuilder {
+/// Builder for [`TrustLayer`].
+pub struct TrustLayerBuilder {
     trust_state: Arc<dyn AsyncTrustStateStore>,
     audit_sink: Arc<dyn AuditSink>,
     host_context_provider: Arc<dyn AsyncHostContextProvider>,
     max_body_bytes: usize,
 }
 
-impl DelegatedLayerBuilder {
+impl TrustLayerBuilder {
     pub fn new(trust_state: Arc<dyn AsyncTrustStateStore>, audit_sink: Arc<dyn AuditSink>) -> Self {
         Self {
             trust_state,
@@ -83,10 +83,10 @@ impl DelegatedLayerBuilder {
         self
     }
 
-    /// Builds the [`DelegatedLayer`], returning `Err` if the production shared-backend
+    /// Builds the [`TrustLayer`], returning `Err` if the production shared-backend
     /// requirement is not satisfied.
     ///
-    /// When `DELEGATED_REQUIRE_SHARED_BACKEND=1` (or `DELEGATED_ENV=production`) is set,
+    /// When `SIGNET_REQUIRE_SHARED_BACKEND=1` (or `SIGNET_ENV=production`) is set,
     /// this returns `Err` containing [`SHARED_BACKEND_REQUIRED_REASON`] if the provided
     /// `trust_state` is not a shared backend. Use this variant in async initializers where
     /// a panic is unacceptable.
@@ -94,11 +94,11 @@ impl DelegatedLayerBuilder {
     /// # Errors
     /// Returns `Err(reason)` when the production shared-backend requirement is active and
     /// the trust state does not satisfy it.
-    pub fn try_build(self) -> Result<DelegatedLayer, String> {
+    pub fn try_build(self) -> Result<TrustLayer, String> {
         if require_shared_backend_in_production() && !self.trust_state.is_shared_backend() {
             return Err(SHARED_BACKEND_REQUIRED_REASON.to_string());
         }
-        Ok(DelegatedLayer {
+        Ok(TrustLayer {
             trust_state: self.trust_state,
             audit_sink: self.audit_sink,
             host_context_provider: self.host_context_provider,
@@ -106,13 +106,12 @@ impl DelegatedLayerBuilder {
         })
     }
 
-    /// Builds the [`DelegatedLayer`], panicking if the production shared-backend
+    /// Builds the [`TrustLayer`], panicking if the production shared-backend
     /// requirement is not satisfied.
     ///
     /// Prefer [`Self::try_build`] in async initializers where a panic is unacceptable.
-    pub fn build(self) -> DelegatedLayer {
-        self.try_build()
-            .expect("DelegatedLayerBuilder::build failed")
+    pub fn build(self) -> TrustLayer {
+        self.try_build().expect("TrustLayerBuilder::build failed")
     }
 }
 
@@ -129,18 +128,18 @@ impl DelegatedLayerBuilder {
 /// The buffered body bytes are forwarded to the inner service unchanged so that
 /// downstream axum handlers can still read them with `Json<T>`.
 #[derive(Clone)]
-pub struct DelegatedLayer {
+pub struct TrustLayer {
     trust_state: Arc<dyn AsyncTrustStateStore>,
     audit_sink: Arc<dyn AuditSink>,
     host_context_provider: Arc<dyn AsyncHostContextProvider>,
     max_body_bytes: usize,
 }
 
-impl<S> Layer<S> for DelegatedLayer {
-    type Service = DelegatedService<S>;
+impl<S> Layer<S> for TrustLayer {
+    type Service = TrustService<S>;
 
     fn layer(&self, inner: S) -> Self::Service {
-        DelegatedService {
+        TrustService {
             inner,
             trust_state: Arc::clone(&self.trust_state),
             audit_sink: Arc::clone(&self.audit_sink),
@@ -150,9 +149,9 @@ impl<S> Layer<S> for DelegatedLayer {
     }
 }
 
-/// The Tower [`Service`] produced by [`DelegatedLayer`].
+/// The Tower [`Service`] produced by [`TrustLayer`].
 #[derive(Clone)]
-pub struct DelegatedService<S> {
+pub struct TrustService<S> {
     inner: S,
     trust_state: Arc<dyn AsyncTrustStateStore>,
     audit_sink: Arc<dyn AuditSink>,
@@ -160,7 +159,7 @@ pub struct DelegatedService<S> {
     max_body_bytes: usize,
 }
 
-impl<S> Service<Request<Body>> for DelegatedService<S>
+impl<S> Service<Request<Body>> for TrustService<S>
 where
     S: Service<Request<Body>, Response = Response, Error = std::convert::Infallible>
         + Clone

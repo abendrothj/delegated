@@ -9,7 +9,7 @@ pub trait Policy: Send + Sync {
     fn evaluate(&self, envelope: &RequestEnvelope, host_context: &HostContext) -> Vec<PolicyCheck>;
 }
 
-/// The built-in policy that runs all standard checks bundled with `delegated`.
+/// The built-in policy that runs all standard checks bundled with `signet`.
 ///
 /// **Does not evaluate `resource_constraints.extra`.**
 /// If your tokens carry custom extra constraints, you must supply a custom [`Policy`]
@@ -18,8 +18,8 @@ pub trait Policy: Send + Sync {
 /// Compose with your own checks by calling `DefaultPolicy.evaluate(...)` and appending:
 ///
 /// ```rust,ignore
-/// use delegated::{DefaultPolicy, Policy};
-/// use delegated::models::{HostContext, PolicyCheck, RequestEnvelope};
+/// use signet::{DefaultPolicy, Policy};
+/// use signet::models::{HostContext, PolicyCheck, RequestEnvelope};
 ///
 /// struct MyPolicy;
 ///

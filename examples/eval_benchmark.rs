@@ -1,8 +1,8 @@
 use chrono::{Duration, Utc};
-use delegated::{
+use ed25519_dalek::SigningKey;
+use signet::{
     AgentIdentityDocumentBuilder, DelegationTokenBuilder, RequestEnvelopeBuilder, evaluate_request,
 };
-use ed25519_dalek::SigningKey;
 use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

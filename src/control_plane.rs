@@ -94,7 +94,7 @@ pub fn simulate_policy(raw_request: &Value) -> Result<PolicySimulationResult, Vi
 /// - The revocation store, emergency deny list, and nonce replay protection are **not consulted**
 ///
 /// Intended for policy preview, UI configuration, and integration testing. For production
-/// enforcement, use [`evaluate_request_with_state`] or the axum [`DelegatedLayer`].
+/// enforcement, use [`evaluate_request_with_state`] or the axum [`TrustLayer`].
 pub fn simulate_policy_with_host_context(
     raw_request: &Value,
     host_context: &HostContext,
@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn builds_report_from_exported_audit_events() {
         let path = std::env::temp_dir().join(format!(
-            "delegated_cp_audit_{}.jsonl",
+            "signet_cp_audit_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")

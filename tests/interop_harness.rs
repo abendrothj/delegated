@@ -1,17 +1,17 @@
 use base64ct::{Base64UrlUnpadded, Encoding};
 use chrono::{TimeZone, Utc};
-use delegated::models::{
+use ed25519_dalek::SigningKey;
+use serde_json::json;
+use signet::models::{
     AgentEndpoint, AgentIdentityDocument, DelegationToken, PublicKeyRecord, RequestEnvelope,
     RuntimeContext, TrustProfile,
 };
-use delegated::{
+use signet::{
     A2aProtocolRequest, InMemoryTrustState, JsonlFileAuditSink, SharedTrustClaims,
     TOKEN_SIGNATURE_ALG_ED25519, handle_a2a_request_with_state,
     handle_http_json_request_with_state, handle_mcp_jsonrpc_request_with_state,
     sign_delegation_token, sign_identity_document,
 };
-use ed25519_dalek::SigningKey;
-use serde_json::json;
 
 fn signing_key() -> SigningKey {
     SigningKey::from_bytes(&[77u8; 32])
@@ -122,7 +122,7 @@ fn run_across_adapters(envelope: RequestEnvelope) -> (u16, Option<serde_json::Va
     let mcp_body = mcp_body(claims.clone());
     let a2a_body = a2a_body(claims);
     let sink_path = std::env::temp_dir().join(format!(
-        "delegated_interop_{}.jsonl",
+        "signet_interop_{}.jsonl",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time should be after epoch")
@@ -138,21 +138,21 @@ fn run_across_adapters(envelope: RequestEnvelope) -> (u16, Option<serde_json::Va
         now(),
         &sink,
         &http_state,
-        &delegated::HostContext::default(),
+        &signet::HostContext::default(),
     );
     let mcp = handle_mcp_jsonrpc_request_with_state(
         &mcp_body,
         now(),
         &sink,
         &mcp_state,
-        &delegated::HostContext::default(),
+        &signet::HostContext::default(),
     );
     let a2a = handle_a2a_request_with_state(
         &a2a_body,
         now(),
         &sink,
         &a2a_state,
-        &delegated::HostContext::default(),
+        &signet::HostContext::default(),
     );
     let _ = std::fs::remove_file(sink_path);
     (http.status_code, mcp.error, a2a.status)

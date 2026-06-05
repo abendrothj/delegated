@@ -205,7 +205,7 @@ mod tests {
 
     fn unique_path(tag: &str) -> std::path::PathBuf {
         let seq = FILE_SEQ.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!("delegated_audit_{tag}_{seq}.jsonl"))
+        std::env::temp_dir().join(format!("signet_audit_{tag}_{seq}.jsonl"))
     }
 
     #[test]

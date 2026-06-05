@@ -4,7 +4,7 @@
 
 ```toml
 [dependencies]
-delegated = { version = "0.1.1", features = ["axum"] }
+signet = { version = "0.1.1", features = ["axum"] }
 ```
 
 Use `redis` + `async` features for distributed trust state.
@@ -13,17 +13,17 @@ Use `redis` + `async` features for distributed trust state.
 
 ```rust
 use std::sync::Arc;
-use delegated::{DelegatedLayerBuilder, InMemoryAsyncTrustState, JsonlFileAuditSink};
+use signet::{TrustLayerBuilder, InMemoryAsyncTrustState, JsonlFileAuditSink};
 
 let trust_state = Arc::new(InMemoryAsyncTrustState::new());
 let audit_sink = Arc::new(JsonlFileAuditSink::new("audit.jsonl"));
-let layer = DelegatedLayerBuilder::new(trust_state, audit_sink)
+let layer = TrustLayerBuilder::new(trust_state, audit_sink)
     .with_max_body_bytes(1024 * 1024)
     .build();
 ```
 
 `InMemoryAsyncTrustState` is for local/dev validation. Use a shared backend (for example `RedisTrustStateStore`) before multi-instance production deployment.
-For hard enforcement, set `DELEGATED_REQUIRE_SHARED_BACKEND=1` (or `DELEGATED_ENV=production`) in production.
+For hard enforcement, set `SIGNET_REQUIRE_SHARED_BACKEND=1` (or `SIGNET_ENV=production`) in production.
 
 Attach this layer before protected handlers.
 

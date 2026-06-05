@@ -64,7 +64,7 @@ impl std::error::Error for IssuanceError {}
 ///
 /// # Example
 /// ```rust,no_run
-/// # use delegated::issuance::DelegationTokenBuilder;
+/// # use signet::issuance::DelegationTokenBuilder;
 /// # use ed25519_dalek::SigningKey;
 /// # let key = SigningKey::from_bytes(&[1u8; 32]);
 /// let token = DelegationTokenBuilder::new()
@@ -290,7 +290,7 @@ impl DelegationTokenBuilder {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use delegated::issuance::AgentIdentityDocumentBuilder;
+/// # use signet::issuance::AgentIdentityDocumentBuilder;
 /// # use ed25519_dalek::SigningKey;
 /// # let key = SigningKey::from_bytes(&[1u8; 32]);
 /// let doc = AgentIdentityDocumentBuilder::new()
@@ -511,7 +511,7 @@ impl AgentIdentityDocumentBuilder {
 ///
 /// # Example
 /// ```rust,no_run
-/// # use delegated::issuance::{RequestEnvelopeBuilder, AgentIdentityDocumentBuilder, DelegationTokenBuilder};
+/// # use signet::issuance::{RequestEnvelopeBuilder, AgentIdentityDocumentBuilder, DelegationTokenBuilder};
 /// # use ed25519_dalek::SigningKey;
 /// # let key = SigningKey::from_bytes(&[1u8; 32]);
 /// # let doc = AgentIdentityDocumentBuilder::new()

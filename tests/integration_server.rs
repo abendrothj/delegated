@@ -1,17 +1,16 @@
 /// End-to-end integration test: spins up a real axum server with the
-/// `DelegatedLayer` middleware and exercises it via `DelegatedClient`.
+/// `TrustLayer` middleware and exercises it via `TrustClient`.
 ///
 /// The test verifies:
 /// - A valid request is allowed (200 OK + `allowed: true`).
 /// - A request whose action is not in the token's allowed list is denied (403).
 /// - A nonce-replayed request is denied (403).
 use axum::{Json, Router, routing::post};
-use delegated::{
-    DelegatedClient, DelegatedLayerBuilder, InMemoryAsyncTrustState, JsonlFileAuditSink,
-    RequestEnvelope,
+use serde_json::json;
+use signet::{
+    InMemoryAsyncTrustState, JsonlFileAuditSink, RequestEnvelope, TrustClient, TrustLayerBuilder,
     issuance::{AgentIdentityDocumentBuilder, DelegationTokenBuilder, RequestEnvelopeBuilder},
 };
-use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -58,7 +57,7 @@ fn build_envelope(action: &str, nonce_suffix: &str) -> RequestEnvelope {
 async fn run_server() -> SocketAddr {
     let trust_state = Arc::new(InMemoryAsyncTrustState::new());
     let audit_path = std::env::temp_dir().join(format!(
-        "delegated_integration_{}.jsonl",
+        "signet_integration_{}.jsonl",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time after epoch")
@@ -66,14 +65,14 @@ async fn run_server() -> SocketAddr {
     ));
     let sink = Arc::new(JsonlFileAuditSink::new(audit_path));
 
-    let layer = DelegatedLayerBuilder::new(trust_state, sink).build();
+    let layer = TrustLayerBuilder::new(trust_state, sink).build();
     run_server_with_layer(layer).await
 }
 
 async fn run_server_with_limit(max_body_bytes: usize) -> SocketAddr {
     let trust_state = Arc::new(InMemoryAsyncTrustState::new());
     let audit_path = std::env::temp_dir().join(format!(
-        "delegated_integration_limit_{}.jsonl",
+        "signet_integration_limit_{}.jsonl",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time after epoch")
@@ -81,13 +80,13 @@ async fn run_server_with_limit(max_body_bytes: usize) -> SocketAddr {
     ));
     let sink = Arc::new(JsonlFileAuditSink::new(audit_path));
 
-    let layer = DelegatedLayerBuilder::new(trust_state, sink)
+    let layer = TrustLayerBuilder::new(trust_state, sink)
         .with_max_body_bytes(max_body_bytes)
         .build();
     run_server_with_layer(layer).await
 }
 
-async fn run_server_with_layer(layer: delegated::DelegatedLayer) -> SocketAddr {
+async fn run_server_with_layer(layer: signet::TrustLayer) -> SocketAddr {
     let app = Router::new()
         .route(
             "/trust",
@@ -112,7 +111,7 @@ async fn run_server_with_layer(layer: delegated::DelegatedLayer) -> SocketAddr {
 #[tokio::test]
 async fn allows_valid_request() {
     let addr = run_server().await;
-    let client = DelegatedClient::new();
+    let client = TrustClient::new();
     let envelope = build_envelope("calendar.create_event", "allow-1");
     let url = format!("http://{addr}/trust");
 
@@ -133,7 +132,7 @@ async fn allows_valid_request() {
 #[tokio::test]
 async fn denies_unauthorized_action() {
     let addr = run_server().await;
-    let client = DelegatedClient::new();
+    let client = TrustClient::new();
     let envelope = build_envelope("calendar.delete_event", "deny-action-1");
     let url = format!("http://{addr}/trust");
 
@@ -149,7 +148,7 @@ async fn denies_unauthorized_action() {
 #[tokio::test]
 async fn denies_nonce_replay() {
     let addr = run_server().await;
-    let client = DelegatedClient::new();
+    let client = TrustClient::new();
     let envelope = build_envelope("calendar.create_event", "replay-nonce");
     let url = format!("http://{addr}/trust");
 

@@ -1,11 +1,11 @@
 [package]
-name = "delegated"
+name = "signet"
 version = "0.1.1"
 edition = "2024"
 description = "Fail-closed trust evaluation for agentic AI systems — delegation tokens, policy enforcement, and audit for agent-to-agent and human-to-agent workflows."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/abendrothj/delegated"
-documentation = "https://docs.rs/crate/delegated/latest"
+documentation = "https://docs.rs/crate/signet/latest"
 readme = "README.md"
 keywords = ["agent", "trust", "delegation", "ai", "security"]
 categories = ["authentication", "web-programming", "network-programming"]
@@ -39,6 +39,10 @@ metrics = { version = "0.23", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 axum = { version = "0.7", default-features = false, features = ["tokio", "http1", "json"] }
 proptest = "1.6"
+
+[[bin]]
+name = "signet"
+path = "src/bin/signet.rs"
 
 [[example]]
 name = "axum_server"
