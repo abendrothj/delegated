@@ -160,6 +160,19 @@ pub fn evaluate_request_with_verifier(
     }
 }
 
+/// Runs only policy checks against the parsed request envelope.
+///
+/// # Security — does not verify signatures, lifetimes, or revocation
+///
+/// This function **skips** the full trust evaluation pipeline. The following are
+/// **not** performed:
+/// - Ed25519 signature verification on the identity document or delegation token
+/// - Token and identity document lifetime window checks
+/// - Revocation store, emergency deny list, and nonce replay protection
+///
+/// It is intended for policy preview, configuration testing, and local development.
+/// **Never use it as a production security gate.** For enforcement, use
+/// [`evaluate_request_with_state`] or the axum [`DelegatedLayer`].
 pub fn simulate_request_policy(
     raw_request: &Value,
     host_context: &HostContext,
@@ -167,6 +180,12 @@ pub fn simulate_request_policy(
     simulate_request_policy_with_policy(raw_request, host_context, &DefaultPolicy)
 }
 
+/// Runs only the supplied [`Policy`] against the parsed request envelope.
+///
+/// # Security — does not verify signatures, lifetimes, or revocation
+///
+/// Same caveats as [`simulate_request_policy`]: signatures, lifetimes, and revocation
+/// are **not** checked. For production enforcement use [`evaluate_request_with_policy`].
 pub fn simulate_request_policy_with_policy(
     raw_request: &Value,
     host_context: &HostContext,

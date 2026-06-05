@@ -11,6 +11,10 @@ pub trait Policy: Send + Sync {
 
 /// The built-in policy that runs all standard checks bundled with `delegated`.
 ///
+/// **Does not evaluate `resource_constraints.extra`.**
+/// If your tokens carry custom extra constraints, you must supply a custom [`Policy`]
+/// that calls [`check_extra_constraints`] — see its documentation for an example.
+///
 /// Compose with your own checks by calling `DefaultPolicy.evaluate(...)` and appending:
 ///
 /// ```rust,ignore

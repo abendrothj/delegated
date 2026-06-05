@@ -73,10 +73,28 @@ pub fn emergency_deny_agent(
         .map_err(|error| Violation::new("control_plane_emergency_deny", error.to_string()))
 }
 
+/// Runs policy checks only, using a default [`HostContext`].
+///
+/// # Security — does not verify signatures, lifetimes, or revocation
+///
+/// This is a convenience wrapper around [`simulate_policy_with_host_context`] with
+/// `HostContext::default()`. It shares the same security caveats: signatures,
+/// lifetimes, and revocation are **not** checked. Use for policy preview only.
 pub fn simulate_policy(raw_request: &Value) -> Result<PolicySimulationResult, Violation> {
     simulate_policy_with_host_context(raw_request, &HostContext::default())
 }
 
+/// Runs policy checks only, using the supplied [`HostContext`] for host-side signals.
+///
+/// # Security — does not verify signatures, lifetimes, or revocation
+///
+/// This function **skips** the full trust pipeline:
+/// - Ed25519 signatures are **not verified**
+/// - Token and identity document lifetimes are **not checked**
+/// - The revocation store, emergency deny list, and nonce replay protection are **not consulted**
+///
+/// Intended for policy preview, UI configuration, and integration testing. For production
+/// enforcement, use [`evaluate_request_with_state`] or the axum [`DelegatedLayer`].
 pub fn simulate_policy_with_host_context(
     raw_request: &Value,
     host_context: &HostContext,

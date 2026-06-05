@@ -240,9 +240,37 @@ pub fn check_delegation_depth(
 }
 
 /// Evaluates the `extra` map in `resource_constraints` using a caller-supplied closure.
-/// The default policy passes all unknown extra keys; supply your own closure to enforce them.
 ///
-/// Returns one `PolicyCheck` per entry in `extra`. Returns an empty `Vec` when there are
+/// # Not called by `DefaultPolicy` — opt-in enforcement required
+///
+/// [`DefaultPolicy`] does **not** invoke this function. Any extra constraints encoded in a
+/// token's `resource_constraints.extra` map are **silently ignored** unless your deployment
+/// provides a custom [`Policy`] implementation that explicitly calls `check_extra_constraints`.
+///
+/// To enforce extra constraints, call this inside your custom policy's `evaluate` method:
+///
+/// ```rust,ignore
+/// use delegated::{DefaultPolicy, Policy, check_extra_constraints};
+/// use delegated::models::{HostContext, PolicyCheck, RequestEnvelope};
+///
+/// struct MyPolicy;
+/// impl Policy for MyPolicy {
+///     fn evaluate(&self, envelope: &RequestEnvelope, ctx: &HostContext) -> Vec<PolicyCheck> {
+///         let mut checks = DefaultPolicy.evaluate(envelope, ctx);
+///         checks.extend(check_extra_constraints(envelope, &|key, values, env| {
+///             // enforce your domain-specific constraints here
+///             PolicyCheck {
+///                 name: key.to_string(),
+///                 passed: values.contains(&env.action.clone()),
+///                 reason: format!("{key} constraint evaluated"),
+///             }
+///         }));
+///         checks
+///     }
+/// }
+/// ```
+///
+/// Returns one [`PolicyCheck`] per entry in `extra`. Returns an empty `Vec` when there are
 /// no `resource_constraints` or the `extra` map is empty.
 pub fn check_extra_constraints(
     envelope: &RequestEnvelope,

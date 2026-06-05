@@ -83,17 +83,36 @@ impl DelegatedLayerBuilder {
         self
     }
 
-    pub fn build(self) -> DelegatedLayer {
-        assert!(
-            !require_shared_backend_in_production() || self.trust_state.is_shared_backend(),
-            "{SHARED_BACKEND_REQUIRED_REASON}"
-        );
-        DelegatedLayer {
+    /// Builds the [`DelegatedLayer`], returning `Err` if the production shared-backend
+    /// requirement is not satisfied.
+    ///
+    /// When `DELEGATED_REQUIRE_SHARED_BACKEND=1` (or `DELEGATED_ENV=production`) is set,
+    /// this returns `Err` containing [`SHARED_BACKEND_REQUIRED_REASON`] if the provided
+    /// `trust_state` is not a shared backend. Use this variant in async initializers where
+    /// a panic is unacceptable.
+    ///
+    /// # Errors
+    /// Returns `Err(reason)` when the production shared-backend requirement is active and
+    /// the trust state does not satisfy it.
+    pub fn try_build(self) -> Result<DelegatedLayer, String> {
+        if require_shared_backend_in_production() && !self.trust_state.is_shared_backend() {
+            return Err(SHARED_BACKEND_REQUIRED_REASON.to_string());
+        }
+        Ok(DelegatedLayer {
             trust_state: self.trust_state,
             audit_sink: self.audit_sink,
             host_context_provider: self.host_context_provider,
             max_body_bytes: self.max_body_bytes,
-        }
+        })
+    }
+
+    /// Builds the [`DelegatedLayer`], panicking if the production shared-backend
+    /// requirement is not satisfied.
+    ///
+    /// Prefer [`Self::try_build`] in async initializers where a panic is unacceptable.
+    pub fn build(self) -> DelegatedLayer {
+        self.try_build()
+            .expect("DelegatedLayerBuilder::build failed")
     }
 }
 
