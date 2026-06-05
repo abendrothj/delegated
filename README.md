@@ -6,7 +6,7 @@ AI agents call APIs, send emails, book meetings, and delegate work to other agen
 
 [![crates.io](https://img.shields.io/crates/v/signet.svg)](https://crates.io/crates/signet)
 [![docs.rs](https://img.shields.io/docsrs/signet)](https://docs.rs/crate/signet/latest)
-[![CI](https://github.com/abendrothj/delegated/actions/workflows/ci.yml/badge.svg)](https://github.com/abendrothj/delegated/actions/workflows/ci.yml)
+[![CI](https://github.com/abendrothj/signet/actions/workflows/ci.yml/badge.svg)](https://github.com/abendrothj/signet/actions/workflows/ci.yml)
 
 ---
 
