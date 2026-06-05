@@ -2,7 +2,10 @@ use crate::adapters::guard::{AdapterGuardConfig, enter_adapter_guard};
 use crate::audit::AuditSink;
 use crate::engine::evaluate_and_audit_with_state;
 use crate::models::{HostContext, RequestEnvelope};
-use crate::revocation::{RuntimeTrustConfig, TrustStateStore, trust_state_from_runtime_config};
+use crate::revocation::{
+    RuntimeTrustConfig, SHARED_BACKEND_REQUIRED_REASON, TrustStateStore,
+    require_shared_backend_in_production, trust_state_from_runtime_config,
+};
 use crate::wire::{SHARED_CLAIMS_KIND, SharedTrustClaims};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -37,6 +40,14 @@ pub fn handle_mcp_jsonrpc_request_with_runtime_config(
     sink: &dyn AuditSink,
     runtime_config: &RuntimeTrustConfig,
 ) -> McpJsonRpcResponse {
+    if require_shared_backend_in_production() {
+        return jsonrpc_error(
+            None,
+            -32603,
+            SHARED_BACKEND_REQUIRED_REASON.to_string(),
+            Some(json!({"stage":"runtime_config"})),
+        );
+    }
     let trust_state = trust_state_from_runtime_config(runtime_config);
     handle_mcp_jsonrpc_request_with_state(
         raw_body,

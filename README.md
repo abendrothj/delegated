@@ -183,6 +183,9 @@ let state = Arc::new(RedisTrustStateStore::connect("redis://127.0.0.1").await?);
 // revoke_tokens uses a Redis pipeline; clear_emergency_deny_list uses SCAN+DEL
 ```
 
+To enforce this in production, set `DELEGATED_REQUIRE_SHARED_BACKEND=1` (or `DELEGATED_ENV=production`).
+When enabled, sync convenience runtime paths fail closed, and `DelegatedLayerBuilder` requires a shared async backend.
+
 ## Revocation and control plane
 
 ```rust

@@ -4,10 +4,10 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 #[cfg(not(test))]
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,6 +115,36 @@ impl Default for RuntimeTrustConfig {
     }
 }
 
+pub const SHARED_BACKEND_REQUIRED_REASON: &str =
+    "shared backend required in production mode; use async state with RedisTrustStateStore";
+
+fn is_truthy_env(value: Option<std::ffi::OsString>) -> bool {
+    matches!(
+        value
+            .as_deref()
+            .and_then(|v| v.to_str())
+            .map(|v| v.to_ascii_lowercase())
+            .as_deref(),
+        Some("1" | "true" | "yes" | "on")
+    )
+}
+
+fn is_production_env(value: Option<std::ffi::OsString>) -> bool {
+    matches!(
+        value
+            .as_deref()
+            .and_then(|v| v.to_str())
+            .map(|v| v.to_ascii_lowercase())
+            .as_deref(),
+        Some("prod" | "production")
+    )
+}
+
+pub fn require_shared_backend_in_production() -> bool {
+    is_truthy_env(std::env::var_os("DELEGATED_REQUIRE_SHARED_BACKEND"))
+        || is_production_env(std::env::var_os("DELEGATED_ENV"))
+}
+
 pub fn default_trust_state_path() -> PathBuf {
     if let Some(override_path) = std::env::var_os("DELEGATED_TRUST_STATE_PATH") {
         return PathBuf::from(override_path);
@@ -147,6 +177,28 @@ pub fn trust_state_from_runtime_config(config: &RuntimeTrustConfig) -> Arc<dyn T
         }
         TrustStateBackend::DurablePath(path) => Arc::new(FileBackedTrustState::new(path.clone())),
         TrustStateBackend::InMemory => default_in_memory_runtime_store(),
+    }
+}
+
+#[cfg(test)]
+mod production_mode_tests {
+    use super::*;
+
+    #[test]
+    fn truthy_env_parser_accepts_common_values() {
+        assert!(is_truthy_env(Some("1".into())));
+        assert!(is_truthy_env(Some("true".into())));
+        assert!(is_truthy_env(Some("YES".into())));
+        assert!(!is_truthy_env(Some("0".into())));
+        assert!(!is_truthy_env(None));
+    }
+
+    #[test]
+    fn production_env_parser_accepts_expected_values() {
+        assert!(is_production_env(Some("production".into())));
+        assert!(is_production_env(Some("PROD".into())));
+        assert!(!is_production_env(Some("dev".into())));
+        assert!(!is_production_env(None));
     }
 }
 

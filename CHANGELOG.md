@@ -42,6 +42,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Runtime convenience APIs now use process-shared in-memory trust state by default, preserving replay checks across calls in the same process.
 - Added release provenance verification (`scripts/verify_release_provenance.sh`) and wired it into CI/release checks to catch tag/version drift.
 - Added external interoperability harness (`tests/external_interop.rs`) and runner script (`scripts/external_interop.sh`) for validating third-party HTTP/MCP/A2A adapters.
+- Added production shared-backend enforcement controls:
+  - `DELEGATED_REQUIRE_SHARED_BACKEND=1` (or `DELEGATED_ENV=production`) now fails closed for non-shared sync convenience runtime paths.
+  - `DelegatedLayerBuilder` now rejects non-shared async stores when shared-backend enforcement is enabled.
 
 ### Production starter pack
 

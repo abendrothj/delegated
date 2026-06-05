@@ -23,6 +23,7 @@ let layer = DelegatedLayerBuilder::new(trust_state, audit_sink)
 ```
 
 `InMemoryAsyncTrustState` is for local/dev validation. Use a shared backend (for example `RedisTrustStateStore`) before multi-instance production deployment.
+For hard enforcement, set `DELEGATED_REQUIRE_SHARED_BACKEND=1` (or `DELEGATED_ENV=production`) in production.
 
 Attach this layer before protected handlers.
 

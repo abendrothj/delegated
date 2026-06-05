@@ -56,6 +56,10 @@ impl RedisTrustStateStore {
 
 #[async_trait]
 impl AsyncTrustStateStore for RedisTrustStateStore {
+    fn is_shared_backend(&self) -> bool {
+        true
+    }
+
     async fn is_token_revoked(&self, token_id: &str) -> Result<bool, TrustStateError> {
         let mut conn = self.conn.clone();
         let exists: bool = redis::cmd("EXISTS")

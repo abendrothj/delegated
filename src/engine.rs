@@ -2,7 +2,10 @@ use crate::audit::{AuditSink, JsonlFileAuditSink, write_audit_event};
 use crate::models::{AuditEvent, Decision, HostContext, PolicyCheck, RequestEnvelope, Violation};
 use crate::policy_trait::{DefaultPolicy, Policy};
 use crate::profiles::validate_profile_compatibility;
-use crate::revocation::{RuntimeTrustConfig, TrustStateStore, trust_state_from_runtime_config};
+use crate::revocation::{
+    RuntimeTrustConfig, SHARED_BACKEND_REQUIRED_REASON, TrustStateStore,
+    require_shared_backend_in_production, trust_state_from_runtime_config,
+};
 use crate::stages::{
     enforce_revocation_and_redelegation, normalize_request, validate_identity_document_lifetime,
     validate_token_binding, validate_token_lifetime, verify_signatures,
@@ -21,6 +24,12 @@ pub fn evaluate_request_with_runtime_config(
     now: DateTime<Utc>,
     runtime_config: &RuntimeTrustConfig,
 ) -> (Decision, AuditEvent) {
+    if require_shared_backend_in_production() {
+        let violation = Violation::new("runtime_config", SHARED_BACKEND_REQUIRED_REASON);
+        let decision = Decision::deny(violation.stage, violation.reason.clone());
+        let event = from_raw(raw_request, &violation, now);
+        return (decision, event);
+    }
     let trust_state = trust_state_from_runtime_config(runtime_config);
     evaluate_request_with_state(
         raw_request,
@@ -186,6 +195,13 @@ pub fn evaluate_and_audit_with_runtime_config(
     sink: &dyn AuditSink,
     runtime_config: &RuntimeTrustConfig,
 ) -> io::Result<Decision> {
+    if require_shared_backend_in_production() {
+        let violation = Violation::new("runtime_config", SHARED_BACKEND_REQUIRED_REASON);
+        let decision = Decision::deny(violation.stage, violation.reason.clone());
+        let event = from_raw(raw_request, &violation, now);
+        write_audit_event(sink, &event)?;
+        return Ok(decision);
+    }
     let trust_state = trust_state_from_runtime_config(runtime_config);
     evaluate_and_audit_with_state(
         raw_request,

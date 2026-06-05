@@ -2,7 +2,10 @@ use crate::adapters::guard::{AdapterGuardConfig, enter_adapter_guard};
 use crate::audit::AuditSink;
 use crate::engine::evaluate_and_audit_with_state;
 use crate::models::HostContext;
-use crate::revocation::{RuntimeTrustConfig, TrustStateStore, trust_state_from_runtime_config};
+use crate::revocation::{
+    RuntimeTrustConfig, SHARED_BACKEND_REQUIRED_REASON, TrustStateStore,
+    require_shared_backend_in_production, trust_state_from_runtime_config,
+};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -32,6 +35,16 @@ pub fn handle_http_json_request_with_runtime_config(
     sink: &dyn AuditSink,
     runtime_config: &RuntimeTrustConfig,
 ) -> HttpAdapterResponse {
+    if require_shared_backend_in_production() {
+        return HttpAdapterResponse {
+            status_code: 500,
+            body: json!({
+                "allowed": false,
+                "stage": "runtime_config",
+                "reason": SHARED_BACKEND_REQUIRED_REASON
+            }),
+        };
+    }
     let trust_state = trust_state_from_runtime_config(runtime_config);
     handle_http_json_request_with_state(
         raw_body,

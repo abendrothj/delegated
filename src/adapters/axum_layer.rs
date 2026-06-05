@@ -1,6 +1,7 @@
 use crate::audit::AuditSink;
 use crate::engine_async::evaluate_and_audit_with_async_state;
 use crate::models::HostContext;
+use crate::revocation::{SHARED_BACKEND_REQUIRED_REASON, require_shared_backend_in_production};
 use crate::revocation_async::AsyncTrustStateStore;
 use axum::{
     body::Body,
@@ -83,6 +84,10 @@ impl DelegatedLayerBuilder {
     }
 
     pub fn build(self) -> DelegatedLayer {
+        assert!(
+            !require_shared_backend_in_production() || self.trust_state.is_shared_backend(),
+            "{SHARED_BACKEND_REQUIRED_REASON}"
+        );
         DelegatedLayer {
             trust_state: self.trust_state,
             audit_sink: self.audit_sink,

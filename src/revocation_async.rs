@@ -9,6 +9,10 @@ use chrono::{DateTime, Utc};
 /// (e.g. `Mutex`, `DashMap`, or a database transaction).
 #[async_trait]
 pub trait AsyncTrustStateStore: Send + Sync {
+    fn is_shared_backend(&self) -> bool {
+        false
+    }
+
     async fn is_token_revoked(&self, token_id: &str) -> Result<bool, TrustStateError>;
     async fn is_agent_emergency_denied(&self, agent_id: &str) -> Result<bool, TrustStateError>;
     async fn consume_nonce(

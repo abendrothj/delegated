@@ -2,7 +2,10 @@ use crate::adapters::guard::{AdapterGuardConfig, enter_adapter_guard};
 use crate::audit::AuditSink;
 use crate::engine::evaluate_and_audit_with_state;
 use crate::models::{HostContext, RequestEnvelope};
-use crate::revocation::{RuntimeTrustConfig, TrustStateStore, trust_state_from_runtime_config};
+use crate::revocation::{
+    RuntimeTrustConfig, SHARED_BACKEND_REQUIRED_REASON, TrustStateStore,
+    require_shared_backend_in_production, trust_state_from_runtime_config,
+};
 use crate::wire::{SHARED_CLAIMS_KIND, SharedTrustClaims};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -39,6 +42,14 @@ pub fn handle_a2a_request_with_runtime_config(
     sink: &dyn AuditSink,
     runtime_config: &RuntimeTrustConfig,
 ) -> A2aProtocolResponse {
+    if require_shared_backend_in_production() {
+        return A2aProtocolResponse {
+            message_id: "unknown".to_string(),
+            status: "error".to_string(),
+            result: None,
+            error: Some(json!({"stage":"runtime_config","reason":SHARED_BACKEND_REQUIRED_REASON})),
+        };
+    }
     let trust_state = trust_state_from_runtime_config(runtime_config);
     handle_a2a_request_with_state(
         raw_body,
