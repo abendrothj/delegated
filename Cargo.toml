@@ -48,6 +48,12 @@ path = "src/bin/signet.rs"
 name = "axum_server"
 required-features = ["axum"]
 
+[[example]]
+name = "gen_vectors"
+
+[[test]]
+name = "vectors"
+
 [[test]]
 name = "integration_server"
 required-features = ["axum", "client"]

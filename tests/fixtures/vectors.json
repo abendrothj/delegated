@@ -1,0 +1,1035 @@
+{
+  "description": "signet reference test vectors",
+  "notes": "Evaluate each vector at the timestamp in evaluate_at using the provided signing key. Do not use wall-clock time.",
+  "signet_spec_version": "0.1",
+  "signing_key": {
+    "algorithm": "Ed25519",
+    "public_key_b64url": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI",
+    "seed_hex": "4242424242424242424242424242424242424242424242424242424242424242"
+  },
+  "vectors": [
+    {
+      "description": "Valid request; all stages pass",
+      "envelope": {
+        "action": "calendar.create_event",
+        "agent_id": "agent:example:scheduler:v1",
+        "audience": "tool:google-calendar",
+        "delegation_token": {
+          "agent_id": "agent:example:scheduler:v1",
+          "allowed_actions": [
+            "calendar.create_event"
+          ],
+          "audience": [
+            "tool:google-calendar"
+          ],
+          "delegator_id": "user:jake-abendroth",
+          "expires_at": "2026-06-05T13:00:00Z",
+          "intent": null,
+          "issued_at": "2026-06-05T11:50:00Z",
+          "issuer": "https://trust.example.ai",
+          "key_id": "key-2026-01",
+          "kind": "DelegationToken",
+          "max_delegation_depth": null,
+          "max_spend": null,
+          "nonce": "nonce-allow-basic",
+          "owner_id": "org:example",
+          "resource_constraints": null,
+          "signature": "8wG9YEhiZ6UUwc77pwYrblsaEqAYixpimEUGs0ZS5JpAnI55w_ZZBkvkf4o4zYGbEjhbnJ38ZW_7BtWJxHy6Dw",
+          "signature_alg": "Ed25519",
+          "spec_version": "0.1",
+          "token_id": "dlg-allow-basic"
+        },
+        "delegator_id": "user:jake-abendroth",
+        "identity_document": {
+          "agent_id": "agent:example:scheduler:v1",
+          "attestation": null,
+          "capabilities": null,
+          "created_at": "2026-06-01T00:00:00Z",
+          "display_name": null,
+          "endpoints": [
+            {
+              "protocol": "http",
+              "url": "https://agents.example.ai/scheduler"
+            }
+          ],
+          "expires_at": "2026-06-12T00:00:00Z",
+          "identity_type": "developer",
+          "issuer": "https://trust.example.ai",
+          "kind": "AgentIdentityDocument",
+          "owner_id": "org:example",
+          "public_keys": [
+            {
+              "crv": "Ed25519",
+              "kid": "key-2026-01",
+              "kty": "OKP",
+              "x": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+            }
+          ],
+          "signature": "I03lBN3BHt8iAsF4Av4yHlKNRUpka5hh9PL2ONiPIuKGnwWroiPFtJwa0rdE7WYpR7B1tbR7QDaHbQoKO_CABg",
+          "spec_version": "0.1",
+          "subject": "agent:example:scheduler:v1",
+          "supported_auth_methods": [
+            "delegation_token"
+          ],
+          "supported_protocols": [
+            "http"
+          ]
+        },
+        "kind": "TrustRequestEnvelope",
+        "profile": "developer",
+        "request_id": "allow-basic",
+        "resource": null,
+        "runtime_context": {
+          "requested_spend": null,
+          "spend_currency": null,
+          "target_calendar_id": null,
+          "target_email": null
+        },
+        "spec_version": "0.1"
+      },
+      "evaluate_at": "2026-06-05T12:00:00Z",
+      "expected": {
+        "allowed": true,
+        "reason": "request authorized",
+        "stage": "evaluate_policy"
+      },
+      "id": "allow-basic"
+    },
+    {
+      "description": "Valid request using the SPIFFE trust profile; identity_type=spiffe, subject=spiffe://...",
+      "envelope": {
+        "action": "calendar.create_event",
+        "agent_id": "agent:example:scheduler:v1",
+        "audience": "tool:google-calendar",
+        "delegation_token": {
+          "agent_id": "agent:example:scheduler:v1",
+          "allowed_actions": [
+            "calendar.create_event"
+          ],
+          "audience": [
+            "tool:google-calendar"
+          ],
+          "delegator_id": "user:jake-abendroth",
+          "expires_at": "2026-06-05T13:00:00Z",
+          "intent": null,
+          "issued_at": "2026-06-05T11:50:00Z",
+          "issuer": "https://trust.example.ai",
+          "key_id": "key-2026-01",
+          "kind": "DelegationToken",
+          "max_delegation_depth": null,
+          "max_spend": null,
+          "nonce": "nonce-allow-spiffe",
+          "owner_id": "org:example",
+          "resource_constraints": null,
+          "signature": "ud5n7aPKL6aWGnK5VBBgsA4jIHy5BTuQ0K7gZ6AWLKRpn76G1nzJP3arSUrvffl3DVvPh2wKkkZ_mO5gSxTHDA",
+          "signature_alg": "Ed25519",
+          "spec_version": "0.1",
+          "token_id": "dlg-allow-spiffe"
+        },
+        "delegator_id": "user:jake-abendroth",
+        "identity_document": {
+          "agent_id": "agent:example:scheduler:v1",
+          "attestation": null,
+          "capabilities": null,
+          "created_at": "2026-06-01T00:00:00Z",
+          "display_name": null,
+          "endpoints": [
+            {
+              "protocol": "http",
+              "url": "https://agents.example.ai/scheduler"
+            }
+          ],
+          "expires_at": "2026-06-12T00:00:00Z",
+          "identity_type": "spiffe",
+          "issuer": "https://trust.example.ai",
+          "kind": "AgentIdentityDocument",
+          "owner_id": "org:example",
+          "public_keys": [
+            {
+              "crv": "Ed25519",
+              "kid": "key-2026-01",
+              "kty": "OKP",
+              "x": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+            }
+          ],
+          "signature": "Y2X6QNIWShhKiqAadcTEdFsuSnz8UQ8-ejBfBFr7KM7T3SGUae3Eo_HFDmIp_zGvSSfLgBu0eJZYIffoQtB8CA",
+          "spec_version": "0.1",
+          "subject": "spiffe://example.ai/agents/scheduler",
+          "supported_auth_methods": [
+            "delegation_token"
+          ],
+          "supported_protocols": [
+            "http"
+          ]
+        },
+        "kind": "TrustRequestEnvelope",
+        "profile": "spiffe",
+        "request_id": "allow-spiffe",
+        "resource": null,
+        "runtime_context": {
+          "requested_spend": null,
+          "spend_currency": null,
+          "target_calendar_id": null,
+          "target_email": null
+        },
+        "spec_version": "0.1"
+      },
+      "evaluate_at": "2026-06-05T12:00:00Z",
+      "expected": {
+        "allowed": true,
+        "reason": "request authorized",
+        "stage": "evaluate_policy"
+      },
+      "id": "allow-spiffe"
+    },
+    {
+      "description": "Token expires_at (2026-06-05T11:00:00Z) is before evaluate_at (2026-06-05T12:00:00Z); lifetime check fails",
+      "envelope": {
+        "action": "calendar.create_event",
+        "agent_id": "agent:example:scheduler:v1",
+        "audience": "tool:google-calendar",
+        "delegation_token": {
+          "agent_id": "agent:example:scheduler:v1",
+          "allowed_actions": [
+            "calendar.create_event"
+          ],
+          "audience": [
+            "tool:google-calendar"
+          ],
+          "delegator_id": "user:jake-abendroth",
+          "expires_at": "2026-06-05T11:00:00Z",
+          "intent": null,
+          "issued_at": "2026-06-05T10:50:00Z",
+          "issuer": "https://trust.example.ai",
+          "key_id": "key-2026-01",
+          "kind": "DelegationToken",
+          "max_delegation_depth": null,
+          "max_spend": null,
+          "nonce": "nonce-deny-expired-token",
+          "owner_id": "org:example",
+          "resource_constraints": null,
+          "signature": "uJJ1E1vPuEq-YPbg4Ie0N8KeyvevY1V310fdZzaghyU6pgxaLtFWTq48DFiqil8_ZCbL7MWOrQ88mTSuFo5UBg",
+          "signature_alg": "Ed25519",
+          "spec_version": "0.1",
+          "token_id": "dlg-deny-expired-token"
+        },
+        "delegator_id": "user:jake-abendroth",
+        "identity_document": {
+          "agent_id": "agent:example:scheduler:v1",
+          "attestation": null,
+          "capabilities": null,
+          "created_at": "2026-06-01T00:00:00Z",
+          "display_name": null,
+          "endpoints": [
+            {
+              "protocol": "http",
+              "url": "https://agents.example.ai/scheduler"
+            }
+          ],
+          "expires_at": "2026-06-12T00:00:00Z",
+          "identity_type": "developer",
+          "issuer": "https://trust.example.ai",
+          "kind": "AgentIdentityDocument",
+          "owner_id": "org:example",
+          "public_keys": [
+            {
+              "crv": "Ed25519",
+              "kid": "key-2026-01",
+              "kty": "OKP",
+              "x": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+            }
+          ],
+          "signature": "I03lBN3BHt8iAsF4Av4yHlKNRUpka5hh9PL2ONiPIuKGnwWroiPFtJwa0rdE7WYpR7B1tbR7QDaHbQoKO_CABg",
+          "spec_version": "0.1",
+          "subject": "agent:example:scheduler:v1",
+          "supported_auth_methods": [
+            "delegation_token"
+          ],
+          "supported_protocols": [
+            "http"
+          ]
+        },
+        "kind": "TrustRequestEnvelope",
+        "profile": "developer",
+        "request_id": "deny-expired-token",
+        "resource": null,
+        "runtime_context": {
+          "requested_spend": null,
+          "spend_currency": null,
+          "target_calendar_id": null,
+          "target_email": null
+        },
+        "spec_version": "0.1"
+      },
+      "evaluate_at": "2026-06-05T12:00:00Z",
+      "expected": {
+        "allowed": false,
+        "reason": "delegation token expired",
+        "stage": "validate_token_lifetime"
+      },
+      "id": "deny-expired-token"
+    },
+    {
+      "description": "Token issued_at (2026-06-05T14:00:00Z) is after evaluate_at (2026-06-05T12:00:00Z); token not yet active",
+      "envelope": {
+        "action": "calendar.create_event",
+        "agent_id": "agent:example:scheduler:v1",
+        "audience": "tool:google-calendar",
+        "delegation_token": {
+          "agent_id": "agent:example:scheduler:v1",
+          "allowed_actions": [
+            "calendar.create_event"
+          ],
+          "audience": [
+            "tool:google-calendar"
+          ],
+          "delegator_id": "user:jake-abendroth",
+          "expires_at": "2026-06-05T15:00:00Z",
+          "intent": null,
+          "issued_at": "2026-06-05T14:00:00Z",
+          "issuer": "https://trust.example.ai",
+          "key_id": "key-2026-01",
+          "kind": "DelegationToken",
+          "max_delegation_depth": null,
+          "max_spend": null,
+          "nonce": "nonce-deny-future-token",
+          "owner_id": "org:example",
+          "resource_constraints": null,
+          "signature": "ID71tslLbe6U3Dxt8bL2Jdslw1MuCyIhIrHLv5-jx6wTEq0UwIfACby6QtF9VN7lpSoesoaoN7xstIDQchejDQ",
+          "signature_alg": "Ed25519",
+          "spec_version": "0.1",
+          "token_id": "dlg-deny-future-token"
+        },
+        "delegator_id": "user:jake-abendroth",
+        "identity_document": {
+          "agent_id": "agent:example:scheduler:v1",
+          "attestation": null,
+          "capabilities": null,
+          "created_at": "2026-06-01T00:00:00Z",
+          "display_name": null,
+          "endpoints": [
+            {
+              "protocol": "http",
+              "url": "https://agents.example.ai/scheduler"
+            }
+          ],
+          "expires_at": "2026-06-12T00:00:00Z",
+          "identity_type": "developer",
+          "issuer": "https://trust.example.ai",
+          "kind": "AgentIdentityDocument",
+          "owner_id": "org:example",
+          "public_keys": [
+            {
+              "crv": "Ed25519",
+              "kid": "key-2026-01",
+              "kty": "OKP",
+              "x": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+            }
+          ],
+          "signature": "I03lBN3BHt8iAsF4Av4yHlKNRUpka5hh9PL2ONiPIuKGnwWroiPFtJwa0rdE7WYpR7B1tbR7QDaHbQoKO_CABg",
+          "spec_version": "0.1",
+          "subject": "agent:example:scheduler:v1",
+          "supported_auth_methods": [
+            "delegation_token"
+          ],
+          "supported_protocols": [
+            "http"
+          ]
+        },
+        "kind": "TrustRequestEnvelope",
+        "profile": "developer",
+        "request_id": "deny-future-token",
+        "resource": null,
+        "runtime_context": {
+          "requested_spend": null,
+          "spend_currency": null,
+          "target_calendar_id": null,
+          "target_email": null
+        },
+        "spec_version": "0.1"
+      },
+      "evaluate_at": "2026-06-05T12:00:00Z",
+      "expected": {
+        "allowed": false,
+        "reason": "delegation token not active yet",
+        "stage": "validate_token_lifetime"
+      },
+      "id": "deny-future-token"
+    },
+    {
+      "description": "Identity document expires_at (2026-06-05T11:00:00Z) is before evaluate_at; document lifetime check fails",
+      "envelope": {
+        "action": "calendar.create_event",
+        "agent_id": "agent:example:scheduler:v1",
+        "audience": "tool:google-calendar",
+        "delegation_token": {
+          "agent_id": "agent:example:scheduler:v1",
+          "allowed_actions": [
+            "calendar.create_event"
+          ],
+          "audience": [
+            "tool:google-calendar"
+          ],
+          "delegator_id": "user:jake-abendroth",
+          "expires_at": "2026-06-05T13:00:00Z",
+          "intent": null,
+          "issued_at": "2026-06-05T11:50:00Z",
+          "issuer": "https://trust.example.ai",
+          "key_id": "key-2026-01",
+          "kind": "DelegationToken",
+          "max_delegation_depth": null,
+          "max_spend": null,
+          "nonce": "nonce-deny-expired-identity",
+          "owner_id": "org:example",
+          "resource_constraints": null,
+          "signature": "56xNPyGrb1T5W0yH4RTscA9Vd68Rh6vQDGnm4sldqqPDl2LzDTTp94FQFagoXO2so3iXeILJXdAUjWi9oYHxBw",
+          "signature_alg": "Ed25519",
+          "spec_version": "0.1",
+          "token_id": "dlg-deny-expired-identity"
+        },
+        "delegator_id": "user:jake-abendroth",
+        "identity_document": {
+          "agent_id": "agent:example:scheduler:v1",
+          "attestation": null,
+          "capabilities": null,
+          "created_at": "2026-06-01T00:00:00Z",
+          "display_name": null,
+          "endpoints": [
+            {
+              "protocol": "http",
+              "url": "https://agents.example.ai/scheduler"
+            }
+          ],
+          "expires_at": "2026-06-05T11:00:00Z",
+          "identity_type": "developer",
+          "issuer": "https://trust.example.ai",
+          "kind": "AgentIdentityDocument",
+          "owner_id": "org:example",
+          "public_keys": [
+            {
+              "crv": "Ed25519",
+              "kid": "key-2026-01",
+              "kty": "OKP",
+              "x": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+            }
+          ],
+          "signature": "KfBfSA6EdxVTzoQluyOztFYpAnvR8Ax2kYZ71huyH-nhMG98ROzYEjKY4Avay7Ido85HwGyZjh0EJpaMVunfAw",
+          "spec_version": "0.1",
+          "subject": "agent:example:scheduler:v1",
+          "supported_auth_methods": [
+            "delegation_token"
+          ],
+          "supported_protocols": [
+            "http"
+          ]
+        },
+        "kind": "TrustRequestEnvelope",
+        "profile": "developer",
+        "request_id": "deny-expired-identity",
+        "resource": null,
+        "runtime_context": {
+          "requested_spend": null,
+          "spend_currency": null,
+          "target_calendar_id": null,
+          "target_email": null
+        },
+        "spec_version": "0.1"
+      },
+      "evaluate_at": "2026-06-05T12:00:00Z",
+      "expected": {
+        "allowed": false,
+        "reason": "identity document expired",
+        "stage": "validate_identity_document_lifetime"
+      },
+      "id": "deny-expired-identity"
+    },
+    {
+      "description": "Token signature replaced with 64 zero bytes; Ed25519 verification fails",
+      "envelope": {
+        "action": "calendar.create_event",
+        "agent_id": "agent:example:scheduler:v1",
+        "audience": "tool:google-calendar",
+        "delegation_token": {
+          "agent_id": "agent:example:scheduler:v1",
+          "allowed_actions": [
+            "calendar.create_event"
+          ],
+          "audience": [
+            "tool:google-calendar"
+          ],
+          "delegator_id": "user:jake-abendroth",
+          "expires_at": "2026-06-05T13:00:00Z",
+          "intent": null,
+          "issued_at": "2026-06-05T11:50:00Z",
+          "issuer": "https://trust.example.ai",
+          "key_id": "key-2026-01",
+          "kind": "DelegationToken",
+          "max_delegation_depth": null,
+          "max_spend": null,
+          "nonce": "nonce-deny-bad-token-signature",
+          "owner_id": "org:example",
+          "resource_constraints": null,
+          "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "signature_alg": "Ed25519",
+          "spec_version": "0.1",
+          "token_id": "dlg-deny-bad-token-signature"
+        },
+        "delegator_id": "user:jake-abendroth",
+        "identity_document": {
+          "agent_id": "agent:example:scheduler:v1",
+          "attestation": null,
+          "capabilities": null,
+          "created_at": "2026-06-01T00:00:00Z",
+          "display_name": null,
+          "endpoints": [
+            {
+              "protocol": "http",
+              "url": "https://agents.example.ai/scheduler"
+            }
+          ],
+          "expires_at": "2026-06-12T00:00:00Z",
+          "identity_type": "developer",
+          "issuer": "https://trust.example.ai",
+          "kind": "AgentIdentityDocument",
+          "owner_id": "org:example",
+          "public_keys": [
+            {
+              "crv": "Ed25519",
+              "kid": "key-2026-01",
+              "kty": "OKP",
+              "x": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+            }
+          ],
+          "signature": "I03lBN3BHt8iAsF4Av4yHlKNRUpka5hh9PL2ONiPIuKGnwWroiPFtJwa0rdE7WYpR7B1tbR7QDaHbQoKO_CABg",
+          "spec_version": "0.1",
+          "subject": "agent:example:scheduler:v1",
+          "supported_auth_methods": [
+            "delegation_token"
+          ],
+          "supported_protocols": [
+            "http"
+          ]
+        },
+        "kind": "TrustRequestEnvelope",
+        "profile": "developer",
+        "request_id": "deny-bad-token-signature",
+        "resource": null,
+        "runtime_context": {
+          "requested_spend": null,
+          "spend_currency": null,
+          "target_calendar_id": null,
+          "target_email": null
+        },
+        "spec_version": "0.1"
+      },
+      "evaluate_at": "2026-06-05T12:00:00Z",
+      "expected": {
+        "allowed": false,
+        "reason": "delegation token signature verification failed for selected key_id",
+        "stage": "verify_signatures"
+      },
+      "id": "deny-bad-token-signature"
+    },
+    {
+      "description": "Identity document signature replaced with 64 zero bytes; Ed25519 verification fails",
+      "envelope": {
+        "action": "calendar.create_event",
+        "agent_id": "agent:example:scheduler:v1",
+        "audience": "tool:google-calendar",
+        "delegation_token": {
+          "agent_id": "agent:example:scheduler:v1",
+          "allowed_actions": [
+            "calendar.create_event"
+          ],
+          "audience": [
+            "tool:google-calendar"
+          ],
+          "delegator_id": "user:jake-abendroth",
+          "expires_at": "2026-06-05T13:00:00Z",
+          "intent": null,
+          "issued_at": "2026-06-05T11:50:00Z",
+          "issuer": "https://trust.example.ai",
+          "key_id": "key-2026-01",
+          "kind": "DelegationToken",
+          "max_delegation_depth": null,
+          "max_spend": null,
+          "nonce": "nonce-deny-bad-identity-signature",
+          "owner_id": "org:example",
+          "resource_constraints": null,
+          "signature": "YJIeZbDyL4UxZBNUA8jef11ietsqvta7oh3A0YjY_hijSvhe4vWjJTKybQQ25mehj2Bm3sn-Uo7XHTdOdjcbAQ",
+          "signature_alg": "Ed25519",
+          "spec_version": "0.1",
+          "token_id": "dlg-deny-bad-identity-signature"
+        },
+        "delegator_id": "user:jake-abendroth",
+        "identity_document": {
+          "agent_id": "agent:example:scheduler:v1",
+          "attestation": null,
+          "capabilities": null,
+          "created_at": "2026-06-01T00:00:00Z",
+          "display_name": null,
+          "endpoints": [
+            {
+              "protocol": "http",
+              "url": "https://agents.example.ai/scheduler"
+            }
+          ],
+          "expires_at": "2026-06-12T00:00:00Z",
+          "identity_type": "developer",
+          "issuer": "https://trust.example.ai",
+          "kind": "AgentIdentityDocument",
+          "owner_id": "org:example",
+          "public_keys": [
+            {
+              "crv": "Ed25519",
+              "kid": "key-2026-01",
+              "kty": "OKP",
+              "x": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+            }
+          ],
+          "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "spec_version": "0.1",
+          "subject": "agent:example:scheduler:v1",
+          "supported_auth_methods": [
+            "delegation_token"
+          ],
+          "supported_protocols": [
+            "http"
+          ]
+        },
+        "kind": "TrustRequestEnvelope",
+        "profile": "developer",
+        "request_id": "deny-bad-identity-signature",
+        "resource": null,
+        "runtime_context": {
+          "requested_spend": null,
+          "spend_currency": null,
+          "target_calendar_id": null,
+          "target_email": null
+        },
+        "spec_version": "0.1"
+      },
+      "evaluate_at": "2026-06-05T12:00:00Z",
+      "expected": {
+        "allowed": false,
+        "reason": "identity document signature verification failed for all keys",
+        "stage": "verify_signatures"
+      },
+      "id": "deny-bad-identity-signature"
+    },
+    {
+      "description": "Requested action (calendar.delete_event) is not in token allowed_actions; policy check fails",
+      "envelope": {
+        "action": "calendar.delete_event",
+        "agent_id": "agent:example:scheduler:v1",
+        "audience": "tool:google-calendar",
+        "delegation_token": {
+          "agent_id": "agent:example:scheduler:v1",
+          "allowed_actions": [
+            "calendar.create_event"
+          ],
+          "audience": [
+            "tool:google-calendar"
+          ],
+          "delegator_id": "user:jake-abendroth",
+          "expires_at": "2026-06-05T13:00:00Z",
+          "intent": null,
+          "issued_at": "2026-06-05T11:50:00Z",
+          "issuer": "https://trust.example.ai",
+          "key_id": "key-2026-01",
+          "kind": "DelegationToken",
+          "max_delegation_depth": null,
+          "max_spend": null,
+          "nonce": "nonce-deny-wrong-action",
+          "owner_id": "org:example",
+          "resource_constraints": null,
+          "signature": "BzxS3eDkTVKxeZO-OqZ2a5ufjj85gyoJrh6LojI7jXysSF9ziFH9EPi4xjtlKffENCecOK3ZzEYyLuRaFYShBA",
+          "signature_alg": "Ed25519",
+          "spec_version": "0.1",
+          "token_id": "dlg-deny-wrong-action"
+        },
+        "delegator_id": "user:jake-abendroth",
+        "identity_document": {
+          "agent_id": "agent:example:scheduler:v1",
+          "attestation": null,
+          "capabilities": null,
+          "created_at": "2026-06-01T00:00:00Z",
+          "display_name": null,
+          "endpoints": [
+            {
+              "protocol": "http",
+              "url": "https://agents.example.ai/scheduler"
+            }
+          ],
+          "expires_at": "2026-06-12T00:00:00Z",
+          "identity_type": "developer",
+          "issuer": "https://trust.example.ai",
+          "kind": "AgentIdentityDocument",
+          "owner_id": "org:example",
+          "public_keys": [
+            {
+              "crv": "Ed25519",
+              "kid": "key-2026-01",
+              "kty": "OKP",
+              "x": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+            }
+          ],
+          "signature": "I03lBN3BHt8iAsF4Av4yHlKNRUpka5hh9PL2ONiPIuKGnwWroiPFtJwa0rdE7WYpR7B1tbR7QDaHbQoKO_CABg",
+          "spec_version": "0.1",
+          "subject": "agent:example:scheduler:v1",
+          "supported_auth_methods": [
+            "delegation_token"
+          ],
+          "supported_protocols": [
+            "http"
+          ]
+        },
+        "kind": "TrustRequestEnvelope",
+        "profile": "developer",
+        "request_id": "deny-wrong-action",
+        "resource": null,
+        "runtime_context": {
+          "requested_spend": null,
+          "spend_currency": null,
+          "target_calendar_id": null,
+          "target_email": null
+        },
+        "spec_version": "0.1"
+      },
+      "evaluate_at": "2026-06-05T12:00:00Z",
+      "expected": {
+        "allowed": false,
+        "reason": "requested action not in token allowed_actions",
+        "stage": "evaluate_policy"
+      },
+      "id": "deny-wrong-action"
+    },
+    {
+      "description": "Envelope delegator_id does not match token delegator_id; binding check fails",
+      "envelope": {
+        "action": "calendar.create_event",
+        "agent_id": "agent:example:scheduler:v1",
+        "audience": "tool:google-calendar",
+        "delegation_token": {
+          "agent_id": "agent:example:scheduler:v1",
+          "allowed_actions": [
+            "calendar.create_event"
+          ],
+          "audience": [
+            "tool:google-calendar"
+          ],
+          "delegator_id": "user:jake-abendroth",
+          "expires_at": "2026-06-05T13:00:00Z",
+          "intent": null,
+          "issued_at": "2026-06-05T11:50:00Z",
+          "issuer": "https://trust.example.ai",
+          "key_id": "key-2026-01",
+          "kind": "DelegationToken",
+          "max_delegation_depth": null,
+          "max_spend": null,
+          "nonce": "nonce-deny-binding-mismatch",
+          "owner_id": "org:example",
+          "resource_constraints": null,
+          "signature": "k287MWqTWgwG7telRyeS8X3Pgu5wg4djKhu5N04nfowvwt88bOXV54BJmqBS8L-iWJxgo6aHCZEvZ1MIYFeaAA",
+          "signature_alg": "Ed25519",
+          "spec_version": "0.1",
+          "token_id": "dlg-deny-binding-mismatch"
+        },
+        "delegator_id": "user:other-user",
+        "identity_document": {
+          "agent_id": "agent:example:scheduler:v1",
+          "attestation": null,
+          "capabilities": null,
+          "created_at": "2026-06-01T00:00:00Z",
+          "display_name": null,
+          "endpoints": [
+            {
+              "protocol": "http",
+              "url": "https://agents.example.ai/scheduler"
+            }
+          ],
+          "expires_at": "2026-06-12T00:00:00Z",
+          "identity_type": "developer",
+          "issuer": "https://trust.example.ai",
+          "kind": "AgentIdentityDocument",
+          "owner_id": "org:example",
+          "public_keys": [
+            {
+              "crv": "Ed25519",
+              "kid": "key-2026-01",
+              "kty": "OKP",
+              "x": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+            }
+          ],
+          "signature": "I03lBN3BHt8iAsF4Av4yHlKNRUpka5hh9PL2ONiPIuKGnwWroiPFtJwa0rdE7WYpR7B1tbR7QDaHbQoKO_CABg",
+          "spec_version": "0.1",
+          "subject": "agent:example:scheduler:v1",
+          "supported_auth_methods": [
+            "delegation_token"
+          ],
+          "supported_protocols": [
+            "http"
+          ]
+        },
+        "kind": "TrustRequestEnvelope",
+        "profile": "developer",
+        "request_id": "deny-binding-mismatch",
+        "resource": null,
+        "runtime_context": {
+          "requested_spend": null,
+          "spend_currency": null,
+          "target_calendar_id": null,
+          "target_email": null
+        },
+        "spec_version": "0.1"
+      },
+      "evaluate_at": "2026-06-05T12:00:00Z",
+      "expected": {
+        "allowed": false,
+        "reason": "token delegator_id does not match request delegator_id",
+        "stage": "validate_token_binding"
+      },
+      "id": "deny-binding-mismatch"
+    },
+    {
+      "description": "spec_version 99.0 is not in the supported versions list; normalize_request rejects it",
+      "envelope": {
+        "action": "calendar.create_event",
+        "agent_id": "agent:example:scheduler:v1",
+        "audience": "tool:google-calendar",
+        "delegation_token": {
+          "agent_id": "agent:example:scheduler:v1",
+          "allowed_actions": [
+            "calendar.create_event"
+          ],
+          "audience": [
+            "tool:google-calendar"
+          ],
+          "delegator_id": "user:jake-abendroth",
+          "expires_at": "2026-06-05T13:00:00Z",
+          "intent": null,
+          "issued_at": "2026-06-05T11:50:00Z",
+          "issuer": "https://trust.example.ai",
+          "key_id": "key-2026-01",
+          "kind": "DelegationToken",
+          "max_delegation_depth": null,
+          "max_spend": null,
+          "nonce": "nonce-deny-unsupported-version",
+          "owner_id": "org:example",
+          "resource_constraints": null,
+          "signature": "sf8vdQgXBUp1ehRp6LH2NEtH_Y-D37-9aGg_gTZNbHBUx8B55TFrdmP7M-GHWYA717ey1GtJJ0kDt-u1wClqCQ",
+          "signature_alg": "Ed25519",
+          "spec_version": "99.0",
+          "token_id": "dlg-deny-unsupported-version"
+        },
+        "delegator_id": "user:jake-abendroth",
+        "identity_document": {
+          "agent_id": "agent:example:scheduler:v1",
+          "attestation": null,
+          "capabilities": null,
+          "created_at": "2026-06-01T00:00:00Z",
+          "display_name": null,
+          "endpoints": [
+            {
+              "protocol": "http",
+              "url": "https://agents.example.ai/scheduler"
+            }
+          ],
+          "expires_at": "2026-06-12T00:00:00Z",
+          "identity_type": "developer",
+          "issuer": "https://trust.example.ai",
+          "kind": "AgentIdentityDocument",
+          "owner_id": "org:example",
+          "public_keys": [
+            {
+              "crv": "Ed25519",
+              "kid": "key-2026-01",
+              "kty": "OKP",
+              "x": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+            }
+          ],
+          "signature": "I03lBN3BHt8iAsF4Av4yHlKNRUpka5hh9PL2ONiPIuKGnwWroiPFtJwa0rdE7WYpR7B1tbR7QDaHbQoKO_CABg",
+          "spec_version": "0.1",
+          "subject": "agent:example:scheduler:v1",
+          "supported_auth_methods": [
+            "delegation_token"
+          ],
+          "supported_protocols": [
+            "http"
+          ]
+        },
+        "kind": "TrustRequestEnvelope",
+        "profile": "developer",
+        "request_id": "deny-unsupported-version",
+        "resource": null,
+        "runtime_context": {
+          "requested_spend": null,
+          "spend_currency": null,
+          "target_calendar_id": null,
+          "target_email": null
+        },
+        "spec_version": "99.0"
+      },
+      "evaluate_at": "2026-06-05T12:00:00Z",
+      "expected": {
+        "allowed": false,
+        "reason": "specifies unsupported version",
+        "stage": "normalize_request"
+      },
+      "id": "deny-unsupported-version"
+    },
+    {
+      "description": "delegation_token field is missing; deserialization fails at normalize_request",
+      "envelope": {
+        "action": "calendar.create_event",
+        "agent_id": "agent:example:scheduler:v1",
+        "audience": "tool:google-calendar",
+        "delegator_id": "user:jake-abendroth",
+        "identity_document": {
+          "agent_id": "agent:example:scheduler:v1",
+          "attestation": null,
+          "capabilities": null,
+          "created_at": "2026-06-01T00:00:00Z",
+          "display_name": null,
+          "endpoints": [
+            {
+              "protocol": "http",
+              "url": "https://agents.example.ai/scheduler"
+            }
+          ],
+          "expires_at": "2026-06-12T00:00:00Z",
+          "identity_type": "developer",
+          "issuer": "https://trust.example.ai",
+          "kind": "AgentIdentityDocument",
+          "owner_id": "org:example",
+          "public_keys": [
+            {
+              "crv": "Ed25519",
+              "kid": "key-2026-01",
+              "kty": "OKP",
+              "x": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+            }
+          ],
+          "signature": "I03lBN3BHt8iAsF4Av4yHlKNRUpka5hh9PL2ONiPIuKGnwWroiPFtJwa0rdE7WYpR7B1tbR7QDaHbQoKO_CABg",
+          "spec_version": "0.1",
+          "subject": "agent:example:scheduler:v1",
+          "supported_auth_methods": [
+            "delegation_token"
+          ],
+          "supported_protocols": [
+            "http"
+          ]
+        },
+        "kind": "TrustRequestEnvelope",
+        "profile": "developer",
+        "request_id": "deny-malformed-envelope",
+        "resource": null,
+        "runtime_context": {
+          "requested_spend": null,
+          "spend_currency": null,
+          "target_calendar_id": null,
+          "target_email": null
+        },
+        "spec_version": "0.1"
+      },
+      "evaluate_at": "2026-06-05T12:00:00Z",
+      "expected": {
+        "allowed": false,
+        "reason": "request does not match contract",
+        "stage": "normalize_request"
+      },
+      "id": "deny-malformed-envelope"
+    },
+    {
+      "description": "Requested spend (200 USD) exceeds token max_spend (100 USD); policy check fails",
+      "envelope": {
+        "action": "calendar.create_event",
+        "agent_id": "agent:example:scheduler:v1",
+        "audience": "tool:google-calendar",
+        "delegation_token": {
+          "agent_id": "agent:example:scheduler:v1",
+          "allowed_actions": [
+            "calendar.create_event"
+          ],
+          "audience": [
+            "tool:google-calendar"
+          ],
+          "delegator_id": "user:jake-abendroth",
+          "expires_at": "2026-06-05T13:00:00Z",
+          "intent": null,
+          "issued_at": "2026-06-05T11:50:00Z",
+          "issuer": "https://trust.example.ai",
+          "key_id": "key-2026-01",
+          "kind": "DelegationToken",
+          "max_delegation_depth": null,
+          "max_spend": {
+            "amount": 100,
+            "currency": "USD"
+          },
+          "nonce": "nonce-deny-spend-exceeded",
+          "owner_id": "org:example",
+          "resource_constraints": null,
+          "signature": "1OO_acxm9KfQw2c1a7ToocNX_DaufGqoIukhfHP02nNm9BPYCKW-3KcWwt0cVufNnzxltqXcxTYOtLmhQDtoCA",
+          "signature_alg": "Ed25519",
+          "spec_version": "0.1",
+          "token_id": "dlg-deny-spend-exceeded"
+        },
+        "delegator_id": "user:jake-abendroth",
+        "identity_document": {
+          "agent_id": "agent:example:scheduler:v1",
+          "attestation": null,
+          "capabilities": null,
+          "created_at": "2026-06-01T00:00:00Z",
+          "display_name": null,
+          "endpoints": [
+            {
+              "protocol": "http",
+              "url": "https://agents.example.ai/scheduler"
+            }
+          ],
+          "expires_at": "2026-06-12T00:00:00Z",
+          "identity_type": "developer",
+          "issuer": "https://trust.example.ai",
+          "kind": "AgentIdentityDocument",
+          "owner_id": "org:example",
+          "public_keys": [
+            {
+              "crv": "Ed25519",
+              "kid": "key-2026-01",
+              "kty": "OKP",
+              "x": "IVL40Zt5HSRFMkLhXy6rbLfP-ntqXtMAl5YOBpiB2xI"
+            }
+          ],
+          "signature": "I03lBN3BHt8iAsF4Av4yHlKNRUpka5hh9PL2ONiPIuKGnwWroiPFtJwa0rdE7WYpR7B1tbR7QDaHbQoKO_CABg",
+          "spec_version": "0.1",
+          "subject": "agent:example:scheduler:v1",
+          "supported_auth_methods": [
+            "delegation_token"
+          ],
+          "supported_protocols": [
+            "http"
+          ]
+        },
+        "kind": "TrustRequestEnvelope",
+        "profile": "developer",
+        "request_id": "deny-spend-exceeded",
+        "resource": null,
+        "runtime_context": {
+          "requested_spend": 200,
+          "spend_currency": "USD",
+          "target_calendar_id": null,
+          "target_email": null
+        },
+        "spec_version": "0.1"
+      },
+      "evaluate_at": "2026-06-05T12:00:00Z",
+      "expected": {
+        "allowed": false,
+        "reason": "requested spend exceeds token max_spend",
+        "stage": "evaluate_policy"
+      },
+      "id": "deny-spend-exceeded"
+    }
+  ],
+  "vectors_version": "1"
+}
