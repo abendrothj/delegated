@@ -190,18 +190,8 @@ mod tests {
         )
     }
 
-    fn reset_guard_state_for_tests() {
-        for shard in global_guard_shards() {
-            if let Ok(mut state) = shard.lock() {
-                state.request_timestamps.clear();
-                state.inflight_by_tuple.clear();
-            }
-        }
-    }
-
     #[test]
     fn blocks_requests_after_rate_limit_threshold() {
-        reset_guard_state_for_tests();
         let (agent_id, delegator_id) = unique_tuple("rate");
         let config = AdapterGuardConfig {
             max_requests_per_minute: 1,
@@ -219,7 +209,6 @@ mod tests {
 
     #[test]
     fn blocks_requests_when_concurrency_limit_reached() {
-        reset_guard_state_for_tests();
         let (agent_id, delegator_id) = unique_tuple("inflight");
         let config = AdapterGuardConfig {
             max_requests_per_minute: 10,
@@ -239,7 +228,6 @@ mod tests {
 
     #[test]
     fn prunes_expired_timestamps_for_active_tuple() {
-        reset_guard_state_for_tests();
         let (agent_id, delegator_id) = unique_tuple("cleanup");
         let config = AdapterGuardConfig {
             max_requests_per_minute: 5,

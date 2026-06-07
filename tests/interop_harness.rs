@@ -155,7 +155,8 @@ fn run_across_adapters(envelope: RequestEnvelope) -> (u16, Option<serde_json::Va
         &signet::HostContext::default(),
     );
     let _ = std::fs::remove_file(sink_path);
-    (http.status_code, mcp.error, a2a.status)
+    let mcp_error = mcp.into_response().and_then(|r| r.error);
+    (http.status_code, mcp_error, a2a.status)
 }
 
 fn mcp_body(claims: SharedTrustClaims) -> String {

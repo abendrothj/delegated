@@ -21,11 +21,52 @@ pub struct McpJsonRpcResponse {
     pub error: Option<Value>,
 }
 
+/// The outcome of the MCP adapter's trust evaluation.
+///
+/// Callers in a sidecar or proxy context must handle both variants:
+/// - `Respond` — return this JSON-RPC response directly to the client.
+/// - `PassThrough` — the method is not trust-gated; forward the original
+///   request to the upstream MCP server unchanged.
+#[derive(Debug)]
+pub enum McpAdapterDecision {
+    Respond(McpJsonRpcResponse),
+    PassThrough,
+}
+
+impl McpAdapterDecision {
+    pub fn is_pass_through(&self) -> bool {
+        matches!(self, Self::PassThrough)
+    }
+
+    pub fn response(&self) -> Option<&McpJsonRpcResponse> {
+        match self {
+            Self::Respond(r) => Some(r),
+            Self::PassThrough => None,
+        }
+    }
+
+    pub fn into_response(self) -> Option<McpJsonRpcResponse> {
+        match self {
+            Self::Respond(r) => Some(r),
+            Self::PassThrough => None,
+        }
+    }
+}
+
+/// Returns true for the trust-gated tool-call method.
+///
+/// Accepts both `tools/call` (MCP 2025 spec) and `tools.call` (signet
+/// dot-notation wire format) so sidecar deployments work with both naming
+/// conventions without requiring a migration.
+fn is_tool_call(method: &str) -> bool {
+    method == "tools/call" || method == "tools.call"
+}
+
 pub fn handle_mcp_jsonrpc_request(
     raw_body: &str,
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
-) -> McpJsonRpcResponse {
+) -> McpAdapterDecision {
     handle_mcp_jsonrpc_request_with_runtime_config(
         raw_body,
         now,
@@ -39,7 +80,7 @@ pub fn handle_mcp_jsonrpc_request_with_runtime_config(
     now: DateTime<Utc>,
     sink: &dyn AuditSink,
     runtime_config: &RuntimeTrustConfig,
-) -> McpJsonRpcResponse {
+) -> McpAdapterDecision {
     if require_shared_backend_in_production() {
         return jsonrpc_error(
             None,
@@ -64,7 +105,7 @@ pub fn handle_mcp_jsonrpc_request_with_state(
     sink: &dyn AuditSink,
     trust_state: &dyn TrustStateStore,
     host_context: &HostContext,
-) -> McpJsonRpcResponse {
+) -> McpAdapterDecision {
     handle_mcp_jsonrpc_request_with_state_and_guard_config(
         raw_body,
         now,
@@ -82,7 +123,7 @@ pub fn handle_mcp_jsonrpc_request_with_state_and_guard_config(
     trust_state: &dyn TrustStateStore,
     guard_config: &AdapterGuardConfig,
     host_context: &HostContext,
-) -> McpJsonRpcResponse {
+) -> McpAdapterDecision {
     let raw_request: Value = match serde_json::from_str(raw_body) {
         Ok(value) => value,
         Err(error) => {
@@ -129,13 +170,12 @@ pub fn handle_mcp_jsonrpc_request_with_state_and_guard_config(
             );
         }
     };
-    if method != "tools.call" {
-        return jsonrpc_error(
-            id,
-            -32601,
-            format!("method not found: {method}"),
-            Some(json!({"stage":"mcp_adapter"})),
-        );
+
+    // Non-tool-call methods (tools/list, prompts/get, resources/read, etc.) are
+    // not trust-gated. Signal pass-through so the caller can forward them to the
+    // upstream MCP server unchanged.
+    if !is_tool_call(method) {
+        return McpAdapterDecision::PassThrough;
     }
 
     let params = match object.get("params").and_then(Value::as_object) {
@@ -151,7 +191,7 @@ pub fn handle_mcp_jsonrpc_request_with_state_and_guard_config(
     };
     let claims = match parse_shared_claims(params) {
         Ok(claims) => claims,
-        Err(error_response) => return error_response.with_id(id),
+        Err(error_response) => return McpAdapterDecision::Respond(error_response.with_id(id)),
     };
     let _guard_lease =
         match enter_adapter_guard(&claims.agent_id, &claims.delegator_id, now, guard_config) {
@@ -179,7 +219,7 @@ pub fn handle_mcp_jsonrpc_request_with_state_and_guard_config(
     };
 
     match evaluate_and_audit_with_state(&raw_envelope, now, sink, trust_state, host_context) {
-        Ok(decision) if decision.allowed => McpJsonRpcResponse {
+        Ok(decision) if decision.allowed => McpAdapterDecision::Respond(McpJsonRpcResponse {
             jsonrpc: "2.0".to_string(),
             id,
             result: Some(json!({
@@ -188,7 +228,7 @@ pub fn handle_mcp_jsonrpc_request_with_state_and_guard_config(
                 "reason": decision.reason
             })),
             error: None,
-        },
+        }),
         Ok(decision) => jsonrpc_error(
             id,
             -32001,
@@ -253,7 +293,10 @@ impl AdapterErrorResponse {
     }
 
     fn with_id(self, id: Option<Value>) -> McpJsonRpcResponse {
-        jsonrpc_error(id, self.code, self.message, self.data)
+        match jsonrpc_error(id, self.code, self.message, self.data) {
+            McpAdapterDecision::Respond(r) => r,
+            McpAdapterDecision::PassThrough => unreachable!("jsonrpc_error always returns Respond"),
+        }
     }
 }
 
@@ -262,8 +305,8 @@ fn jsonrpc_error(
     code: i64,
     message: String,
     data: Option<Value>,
-) -> McpJsonRpcResponse {
-    McpJsonRpcResponse {
+) -> McpAdapterDecision {
+    McpAdapterDecision::Respond(McpJsonRpcResponse {
         jsonrpc: "2.0".to_string(),
         id,
         result: None,
@@ -272,7 +315,7 @@ fn jsonrpc_error(
             "message": message,
             "data": data
         })),
-    }
+    })
 }
 
 #[cfg(test)]
@@ -424,7 +467,43 @@ mod tests {
                 .as_nanos()
         ));
         let sink = JsonlFileAuditSink::new(sink_path.clone());
-        let response = handle_mcp_jsonrpc_request(&body, now(), &sink);
+        let McpAdapterDecision::Respond(response) = handle_mcp_jsonrpc_request(&body, now(), &sink)
+        else {
+            panic!("expected Respond for tools.call");
+        };
+        assert!(response.error.is_none());
+        assert_eq!(
+            response.result.as_ref().and_then(|v| v.get("allowed")),
+            Some(&json!(true))
+        );
+        std::fs::remove_file(sink_path).expect("temporary audit file should be removable");
+    }
+
+    #[test]
+    fn allows_valid_mcp_request_with_slash_method() {
+        let nonce = unique_nonce("nonce-mcp-slash");
+        let body = json!({
+            "jsonrpc":"2.0",
+            "id":"msg-slash-1",
+            "method":"tools/call",
+            "params":{
+                "_trust": signed_shared_claims(&nonce),
+                "_payload":{"tool":"calendar.create_event"}
+            }
+        })
+        .to_string();
+        let sink_path = std::env::temp_dir().join(format!(
+            "delegated_mcp_slash_{}.jsonl",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time should be after epoch")
+                .as_nanos()
+        ));
+        let sink = JsonlFileAuditSink::new(sink_path.clone());
+        let McpAdapterDecision::Respond(response) = handle_mcp_jsonrpc_request(&body, now(), &sink)
+        else {
+            panic!("expected Respond for tools/call");
+        };
         assert!(response.error.is_none());
         assert_eq!(
             response.result.as_ref().and_then(|v| v.get("allowed")),
@@ -469,10 +548,16 @@ mod tests {
             &state,
             &HostContext::default(),
         );
-        assert!(first.error.is_none());
-        assert!(second.error.is_some());
+        let McpAdapterDecision::Respond(first_response) = first else {
+            panic!("expected Respond");
+        };
+        let McpAdapterDecision::Respond(second_response) = second else {
+            panic!("expected Respond");
+        };
+        assert!(first_response.error.is_none());
+        assert!(second_response.error.is_some());
         assert_eq!(
-            second
+            second_response
                 .error
                 .as_ref()
                 .and_then(|e| e.get("data"))
@@ -542,9 +627,15 @@ mod tests {
             &config,
             &HostContext::default(),
         );
-        assert!(first.error.is_none());
+        let McpAdapterDecision::Respond(first_response) = first else {
+            panic!("expected Respond");
+        };
+        let McpAdapterDecision::Respond(second_response) = second else {
+            panic!("expected Respond");
+        };
+        assert!(first_response.error.is_none());
         assert_eq!(
-            second
+            second_response
                 .error
                 .as_ref()
                 .and_then(|e| e.get("code"))
@@ -552,7 +643,7 @@ mod tests {
             Some(-32029)
         );
         assert_eq!(
-            second
+            second_response
                 .error
                 .as_ref()
                 .and_then(|e| e.get("data"))
@@ -563,34 +654,36 @@ mod tests {
     }
 
     #[test]
-    fn rejects_mcp_method_other_than_tools_call() {
-        let nonce = unique_nonce("nonce-mcp-bad-method");
-        let body = json!({
-            "jsonrpc":"2.0",
-            "id":"msg-method-1",
-            "method":"prompts.list",
-            "params":{
-                "_trust": signed_shared_claims(&nonce)
-            }
-        })
-        .to_string();
+    fn passes_through_non_tool_call_method() {
+        let nonce = unique_nonce("nonce-mcp-passthrough");
         let sink_path = std::env::temp_dir().join(format!(
-            "delegated_mcp_method_{}.jsonl",
+            "delegated_mcp_passthrough_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time should be after epoch")
                 .as_nanos()
         ));
         let sink = JsonlFileAuditSink::new(sink_path.clone());
-        let response = handle_mcp_jsonrpc_request(&body, now(), &sink);
-        assert_eq!(
-            response
-                .error
-                .as_ref()
-                .and_then(|e| e.get("code"))
-                .and_then(|c| c.as_i64()),
-            Some(-32601)
-        );
+
+        for method in &["tools/list", "prompts/get", "resources/read", "prompts/list"] {
+            let body = json!({
+                "jsonrpc":"2.0",
+                "id":"msg-passthrough-1",
+                "method": method,
+                "params":{
+                    "_trust": signed_shared_claims(&nonce)
+                }
+            })
+            .to_string();
+            assert!(
+                matches!(
+                    handle_mcp_jsonrpc_request(&body, now(), &sink),
+                    McpAdapterDecision::PassThrough
+                ),
+                "expected PassThrough for method {method}"
+            );
+        }
+
         let _ = std::fs::remove_file(sink_path);
     }
 }

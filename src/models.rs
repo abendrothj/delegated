@@ -47,6 +47,13 @@ pub struct HostContext {
     pub extra_approval_granted: Option<bool>,
     /// Permitted clock skew in seconds for token/document lifetime checks. Default: 30.
     pub clock_leeway_secs: u64,
+    /// Maps inbound action names to canonical token names before policy evaluation.
+    ///
+    /// Tokens always use canonical names (`calendar.create_event`). This map lets the
+    /// receiver translate whatever the caller sends (`GoogleCalendarCreate`,
+    /// `calendar_insert`, etc.) into the canonical form without reissuing tokens.
+    /// Empty by default — no translation is applied.
+    pub action_aliases: HashMap<String, String>,
 }
 
 impl Default for HostContext {
@@ -59,6 +66,7 @@ impl Default for HostContext {
             risk_challenge_passed: None,
             extra_approval_granted: None,
             clock_leeway_secs: 30,
+            action_aliases: HashMap::new(),
         }
     }
 }

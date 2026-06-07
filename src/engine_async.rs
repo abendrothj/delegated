@@ -1,5 +1,5 @@
 use crate::audit::{AuditSink, write_audit_event};
-use crate::engine::{apply_policy_checks, from_envelope, from_raw};
+use crate::engine::{apply_action_aliases, apply_policy_checks, from_envelope, from_raw};
 use crate::models::{AuditEvent, Decision, HostContext, PolicyCheck, RequestEnvelope, Violation};
 use crate::policy_trait::{DefaultPolicy, Policy};
 use crate::profiles::validate_profile_compatibility;
@@ -50,6 +50,7 @@ pub async fn evaluate_request_with_async_state_and_policy(
 
     let result: Result<RequestEnvelope, Violation> = async {
         let envelope = normalize_request(raw_request)?;
+        let envelope = apply_action_aliases(envelope, host_context);
         let envelope = validate_profile_compatibility(envelope)?;
         let envelope = verify_signatures(envelope)?;
         let envelope = validate_identity_document_lifetime(envelope, now, leeway)?;

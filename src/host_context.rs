@@ -1,4 +1,5 @@
 use crate::models::HostContext;
+use std::collections::HashMap;
 
 /// Builder for [`HostContext`]. All fields default to their zero values via
 /// [`HostContext::default()`] — call only the setters you need.
@@ -51,6 +52,25 @@ impl HostContextBuilder {
 
     pub fn clock_leeway_secs(mut self, secs: u64) -> Self {
         self.inner.clock_leeway_secs = secs;
+        self
+    }
+
+    /// Register a single action alias: `inbound` is what callers send;
+    /// `canonical` is what delegation tokens use.
+    pub fn action_alias(
+        mut self,
+        inbound: impl Into<String>,
+        canonical: impl Into<String>,
+    ) -> Self {
+        self.inner
+            .action_aliases
+            .insert(inbound.into(), canonical.into());
+        self
+    }
+
+    /// Replace the entire alias map in one call.
+    pub fn action_aliases(mut self, aliases: HashMap<String, String>) -> Self {
+        self.inner.action_aliases = aliases;
         self
     }
 
@@ -109,6 +129,36 @@ mod tests {
         assert_eq!(ctx.risk_challenge_passed, Some(true));
         assert_eq!(ctx.extra_approval_granted, Some(false));
         assert_eq!(ctx.clock_leeway_secs, 60);
+    }
+
+    #[test]
+    fn action_alias_builder_methods() {
+        let ctx = HostContextBuilder::new()
+            .action_alias("GoogleCalendarCreate", "calendar.create_event")
+            .action_alias("calendar_insert", "calendar.create_event")
+            .build();
+
+        assert_eq!(
+            ctx.action_aliases.get("GoogleCalendarCreate").map(String::as_str),
+            Some("calendar.create_event")
+        );
+        assert_eq!(
+            ctx.action_aliases.get("calendar_insert").map(String::as_str),
+            Some("calendar.create_event")
+        );
+        assert!(ctx.action_aliases.get("unknown").is_none());
+    }
+
+    #[test]
+    fn action_aliases_bulk_replace() {
+        let mut map = HashMap::new();
+        map.insert("foo".to_string(), "bar".to_string());
+        let ctx = HostContextBuilder::new()
+            .action_alias("will_be_replaced", "old")
+            .action_aliases(map)
+            .build();
+        assert_eq!(ctx.action_aliases.get("foo").map(String::as_str), Some("bar"));
+        assert!(ctx.action_aliases.get("will_be_replaced").is_none());
     }
 
     #[test]

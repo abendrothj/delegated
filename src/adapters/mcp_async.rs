@@ -1,5 +1,5 @@
 use crate::adapters::guard::{AdapterGuardConfig, enter_adapter_guard};
-use crate::adapters::mcp::McpJsonRpcResponse;
+use crate::adapters::mcp::{McpAdapterDecision, McpJsonRpcResponse};
 use crate::audit::AuditSink;
 use crate::engine_async::evaluate_and_audit_with_async_state;
 use crate::models::{HostContext, RequestEnvelope};
@@ -14,7 +14,7 @@ pub async fn handle_mcp_jsonrpc_request_with_async_state(
     sink: &dyn AuditSink,
     trust_state: &dyn AsyncTrustStateStore,
     host_context: &HostContext,
-) -> McpJsonRpcResponse {
+) -> McpAdapterDecision {
     handle_mcp_jsonrpc_request_with_async_state_and_guard_config(
         raw_body,
         now,
@@ -33,7 +33,7 @@ pub async fn handle_mcp_jsonrpc_request_with_async_state_and_guard_config(
     trust_state: &dyn AsyncTrustStateStore,
     guard_config: &AdapterGuardConfig,
     host_context: &HostContext,
-) -> McpJsonRpcResponse {
+) -> McpAdapterDecision {
     let raw_request: Value = match serde_json::from_str(raw_body) {
         Ok(value) => value,
         Err(error) => {
@@ -80,13 +80,12 @@ pub async fn handle_mcp_jsonrpc_request_with_async_state_and_guard_config(
             );
         }
     };
-    if method != "tools.call" {
-        return jsonrpc_error(
-            id,
-            -32601,
-            format!("method not found: {method}"),
-            Some(json!({"stage":"mcp_adapter"})),
-        );
+
+    // Non-tool-call methods (tools/list, prompts/get, resources/read, etc.) are
+    // not trust-gated. Signal pass-through so the caller can forward them to the
+    // upstream MCP server unchanged.
+    if !is_tool_call(method) {
+        return McpAdapterDecision::PassThrough;
     }
 
     let params = match object.get("params").and_then(Value::as_object) {
@@ -135,7 +134,7 @@ pub async fn handle_mcp_jsonrpc_request_with_async_state_and_guard_config(
     match evaluate_and_audit_with_async_state(&raw_envelope, now, sink, trust_state, host_context)
         .await
     {
-        Ok(decision) if decision.allowed => McpJsonRpcResponse {
+        Ok(decision) if decision.allowed => McpAdapterDecision::Respond(McpJsonRpcResponse {
             jsonrpc: "2.0".to_string(),
             id,
             result: Some(json!({
@@ -144,7 +143,7 @@ pub async fn handle_mcp_jsonrpc_request_with_async_state_and_guard_config(
                 "reason": decision.reason
             })),
             error: None,
-        },
+        }),
         Ok(decision) => jsonrpc_error(
             id,
             -32001,
@@ -192,13 +191,21 @@ fn parse_shared_claims(
     Ok(claims)
 }
 
+/// Returns true for the trust-gated tool-call method.
+///
+/// Accepts both `tools/call` (MCP 2025 spec) and `tools.call` (signet
+/// dot-notation wire format).
+fn is_tool_call(method: &str) -> bool {
+    method == "tools/call" || method == "tools.call"
+}
+
 fn jsonrpc_error(
     id: Option<Value>,
     code: i64,
     message: String,
     data: Option<Value>,
-) -> McpJsonRpcResponse {
-    McpJsonRpcResponse {
+) -> McpAdapterDecision {
+    McpAdapterDecision::Respond(McpJsonRpcResponse {
         jsonrpc: "2.0".to_string(),
         id,
         result: None,
@@ -207,7 +214,7 @@ fn jsonrpc_error(
             "message": message,
             "data": data
         })),
-    }
+    })
 }
 
 #[cfg(test)]
@@ -357,14 +364,11 @@ mod tests {
                 .as_nanos()
         ));
         let sink = JsonlFileAuditSink::new(path.clone());
-        let response = handle_mcp_jsonrpc_request_with_async_state(
-            &body,
-            now(),
-            &sink,
-            &state,
-            &HostContext::default(),
-        )
-        .await;
+        let McpAdapterDecision::Respond(response) =
+            handle_mcp_jsonrpc_request_with_async_state(&body, now(), &sink, &state, &HostContext::default()).await
+        else {
+            panic!("expected Respond for tools.call");
+        };
         assert!(
             response.error.is_none(),
             "unexpected error: {:?}",
@@ -401,70 +405,66 @@ mod tests {
                 .as_nanos()
         ));
         let sink = JsonlFileAuditSink::new(path.clone());
-        let first = handle_mcp_jsonrpc_request_with_async_state(
-            &body,
-            now(),
-            &sink,
-            &state,
-            &HostContext::default(),
-        )
-        .await;
-        let second = handle_mcp_jsonrpc_request_with_async_state(
-            &body,
-            now(),
-            &sink,
-            &state,
-            &HostContext::default(),
-        )
-        .await;
-        assert!(first.error.is_none());
-        assert!(second.error.is_some());
+        let first =
+            handle_mcp_jsonrpc_request_with_async_state(&body, now(), &sink, &state, &HostContext::default()).await;
+        let second =
+            handle_mcp_jsonrpc_request_with_async_state(&body, now(), &sink, &state, &HostContext::default()).await;
+        let McpAdapterDecision::Respond(first_response) = first else {
+            panic!("expected Respond");
+        };
+        let McpAdapterDecision::Respond(second_response) = second else {
+            panic!("expected Respond");
+        };
+        assert!(first_response.error.is_none());
+        assert!(second_response.error.is_some());
         std::fs::remove_file(path).expect("temporary audit file should be removable");
     }
 
     #[tokio::test]
-    async fn async_mcp_rejects_method_other_than_tools_call() {
+    async fn async_mcp_passes_through_non_tool_call_method() {
         let nonce = format!(
-            "nonce-mcp-async-method-{}",
+            "nonce-mcp-async-passthrough-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("epoch")
                 .as_nanos()
         );
-        let body = json!({
-            "jsonrpc": "2.0",
-            "id": "msg-async-method",
-            "method": "resources.read",
-            "params": {
-                "_trust": signed_claims(&nonce)
-            }
-        })
-        .to_string();
         let state = InMemoryAsyncTrustState::new();
         let path = std::env::temp_dir().join(format!(
-            "delegated_mcp_async_method_{}.jsonl",
+            "delegated_mcp_async_passthrough_{}.jsonl",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("epoch")
                 .as_nanos()
         ));
         let sink = JsonlFileAuditSink::new(path.clone());
-        let response = handle_mcp_jsonrpc_request_with_async_state(
-            &body,
-            now(),
-            &sink,
-            &state,
-            &HostContext::default(),
-        )
-        .await;
-        assert_eq!(
-            response
-                .error
-                .as_ref()
-                .and_then(|e| e.get("code"))
-                .and_then(|c| c.as_i64()),
-            Some(-32601)
-        );
+
+        for method in &["tools/list", "resources/read", "prompts/get"] {
+            let body = json!({
+                "jsonrpc": "2.0",
+                "id": "msg-async-passthrough",
+                "method": method,
+                "params": {
+                    "_trust": signed_claims(&nonce)
+                }
+            })
+            .to_string();
+            assert!(
+                matches!(
+                    handle_mcp_jsonrpc_request_with_async_state(
+                        &body,
+                        now(),
+                        &sink,
+                        &state,
+                        &HostContext::default()
+                    )
+                    .await,
+                    McpAdapterDecision::PassThrough
+                ),
+                "expected PassThrough for method {method}"
+            );
+        }
+
         let _ = std::fs::remove_file(path);
     }
 }

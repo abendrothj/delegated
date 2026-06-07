@@ -68,6 +68,7 @@ pub fn evaluate_request_with_policy(
     let leeway = Duration::seconds(host_context.clock_leeway_secs as i64);
 
     let result = normalize_request(raw_request)
+        .map(|envelope| apply_action_aliases(envelope, host_context))
         .and_then(validate_profile_compatibility)
         .and_then(verify_signatures)
         .and_then(|envelope| validate_identity_document_lifetime(envelope, now, leeway))
@@ -136,6 +137,7 @@ pub fn evaluate_request_with_verifier(
     let leeway = Duration::seconds(host_context.clock_leeway_secs as i64);
 
     let result = normalize_request(raw_request)
+        .map(|envelope| apply_action_aliases(envelope, host_context))
         .and_then(validate_profile_compatibility)
         .and_then(|envelope| verify_signatures_with_verifier(envelope, verifier))
         .and_then(|envelope| validate_identity_document_lifetime(envelope, now, leeway))
@@ -317,6 +319,19 @@ pub(crate) fn from_raw(
         action,
         token_id,
     }
+}
+
+/// Translates `envelope.action` to its canonical form using the host-side alias
+/// map. Tokens always carry canonical action names; this lets the receiver
+/// normalize whatever the caller sends without reissuing tokens.
+pub(crate) fn apply_action_aliases(
+    mut envelope: RequestEnvelope,
+    host_context: &HostContext,
+) -> RequestEnvelope {
+    if let Some(canonical) = host_context.action_aliases.get(&envelope.action) {
+        envelope.action = canonical.clone();
+    }
+    envelope
 }
 
 fn extract_string(root: &Value, path: &[&str]) -> Option<String> {
@@ -504,6 +519,39 @@ mod tests {
         assert!(!decision.allowed);
         assert_eq!(decision.stage, "evaluate_policy");
         assert!(!event.allowed);
+    }
+
+    #[test]
+    fn action_alias_translates_inbound_name_to_canonical() {
+        // Token allows "calendar.create_event"; caller sends "GoogleCalendarCreate".
+        let mut request = valid_request();
+        request["action"] = serde_json::Value::String("GoogleCalendarCreate".to_string());
+
+        let state = InMemoryTrustState::new();
+        let host_context = crate::host_context::HostContextBuilder::new()
+            .action_alias("GoogleCalendarCreate", "calendar.create_event")
+            .build();
+        let (decision, _) = evaluate_request_with_state(&request, now(), &state, &host_context);
+        assert!(
+            decision.allowed,
+            "alias should translate to canonical action: {}",
+            decision.reason
+        );
+    }
+
+    #[test]
+    fn action_alias_missing_still_denies_unknown_action() {
+        let mut request = valid_request();
+        request["action"] = serde_json::Value::String("UnknownAction".to_string());
+
+        let state = InMemoryTrustState::new();
+        // Alias map has no entry for "UnknownAction".
+        let host_context = crate::host_context::HostContextBuilder::new()
+            .action_alias("GoogleCalendarCreate", "calendar.create_event")
+            .build();
+        let (decision, _) = evaluate_request_with_state(&request, now(), &state, &host_context);
+        assert!(!decision.allowed);
+        assert_eq!(decision.stage, "evaluate_policy");
     }
 
     #[test]

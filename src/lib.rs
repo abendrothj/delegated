@@ -45,8 +45,9 @@ pub use adapters::http::{
     handle_http_json_request_with_state, handle_http_json_request_with_state_and_guard_config,
 };
 pub use adapters::mcp::{
-    McpJsonRpcResponse, handle_mcp_jsonrpc_request, handle_mcp_jsonrpc_request_with_runtime_config,
-    handle_mcp_jsonrpc_request_with_state, handle_mcp_jsonrpc_request_with_state_and_guard_config,
+    McpAdapterDecision, McpJsonRpcResponse, handle_mcp_jsonrpc_request,
+    handle_mcp_jsonrpc_request_with_runtime_config, handle_mcp_jsonrpc_request_with_state,
+    handle_mcp_jsonrpc_request_with_state_and_guard_config,
 };
 pub use audit::{AuditOrder, AuditQuery, AuditReader, AuditSink, JsonlFileAuditSink};
 pub use contracts::{SPEC_VERSION_CURRENT, SUPPORTED_SPEC_VERSIONS};
